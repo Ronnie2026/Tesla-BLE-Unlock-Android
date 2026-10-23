@@ -9,3 +9,6 @@ local.properties
 captures/
 # Local device QA may contain vehicle identifiers and nearby-device data.
 docs/qa/
+protocol/bin/
+__pycache__/
+.claude/
