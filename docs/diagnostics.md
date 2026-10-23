@@ -24,7 +24,7 @@ python3 scripts/read-device-logs.py
 
 ## 已排查的扫描问题（2026-10-23，努比亚豆包手机二代（NX888J）/ Android 16）
 
-现象：App 扫描收不到车（车广播名 `S7ee461a98b6db8a8C`，系统蓝牙设置可以看到）。
+现象：App 扫描收不到车（车广播名 `S1a87a5a75f3df858C`，系统蓝牙设置可以看到）。
 HCI 抓包证明芯片和协议栈都收到了广播，但栈不分发给带 `neverForLocation` 标志的三方扫描客户端；
 服务 UUID、名字过滤、扩展广播（setLegacy(false)）等配置全部同样被丢弃。
 根因：该 ROM 的栈对 `neverForLocation` 客户端丢弃此车广播报告。

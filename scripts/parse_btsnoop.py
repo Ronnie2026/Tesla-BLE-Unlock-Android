@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """Parse a btsnoop_hci.log and report LE advertising reports, flagging Tesla key ads."""
-import struct, sys, zlib
+import re, struct, sys
 
 def records(data):
     assert data[:8] == b'btsnoop\x00', 'not a btsnoop file'
@@ -70,21 +70,23 @@ def parse_ad_structure_names(data):
         off += 1 + ln
     return out
 
-def main(path):
+def main(path, pattern=None):
     data = open(path, 'rb').read()
     if data[:2] == b'PK':
         sys.exit('zip given; extract btsnoop_hci.log first')
+    pat = pattern.encode() if pattern else None
     total = 0
     names = {}
     tesla = []
     for flags, pkt in records(data):
         for kind, etype, atype, addr, adata, rssi in adv_reports(pkt):
             total += 1
-            for nm in parse_ad_structure_names(adata):
+            ad_names = parse_ad_structure_names(adata)
+            for nm in ad_names:
                 names.setdefault(nm, [0, rssi])
                 names[nm][0] += 1
                 names[nm][1] = max(names[nm][1], rssi)
-            if b'7ee461a98b6db8a8' in adata or bytes([0x11, 0x02]) in adata:
+            if (pat and pat in adata) or any(re.match(r'^S[0-9a-fA-F]{16}.$', nm) for nm in ad_names):
                 tesla.append((kind, addr, adata.hex(), rssi))
     print(f'LE advertising reports: {total}')
     print(f'\n-- all advertised names (count, best rssi) --')
@@ -95,4 +97,6 @@ def main(path):
         print('  ', t)
 
 if __name__ == '__main__':
-    main(sys.argv[1])
+    if len(sys.argv) < 2:
+        sys.exit('usage: parse_btsnoop.py <btsnoop_hci.log> [ascii-name-pattern]')
+    main(sys.argv[1], sys.argv[2] if len(sys.argv) > 2 else None)

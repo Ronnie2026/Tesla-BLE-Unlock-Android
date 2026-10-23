@@ -18,14 +18,14 @@ class TeslaProtocolTest {
     }
     @Test
     fun advertisementPrefixMatchesOfficialVector() {
-        // Official vector for this VIN ends in a VIN-derived checksum char ('C'); match on the prefix.
+        // Official vector: name is S + sha1(vin)[:8] hex + literal 'C'; we match on the hex prefix.
         assertEquals(
             "S1a87a5a75f3df858",
             TeslaProtocol.advertisementPrefix("5YJS0000000000000")
         )
     }
     @Test
-    fun teslaAdvertisementAcceptsAnyChecksumChar() {
+    fun teslaAdvertisementFormatIsRecognised() {
         assertTrue(TeslaProtocol.isTeslaAdvertisement("S1a87a5a75f3df858C"))
         assertTrue(TeslaProtocol.isTeslaAdvertisement("S1a87a5a75f3df858Z"))
         assertFalse(TeslaProtocol.isTeslaAdvertisement("s1a87a5a75f3df858c"))
