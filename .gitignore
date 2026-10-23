@@ -1,0 +1,11 @@
+.gradle/
+**/build/
+local.properties
+.idea/
+*.iml
+*.jks
+*.keystore
+.DS_Store
+captures/
+# Local device QA may contain vehicle identifiers and nearby-device data.
+docs/qa/
