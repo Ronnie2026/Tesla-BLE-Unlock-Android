@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Same side view, tail on the right; raised liftgate identifies the rear compartment. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+ android:width="32dp" android:height="32dp" android:viewportWidth="32" android:viewportHeight="32">
+ <path android:fillColor="#00000000" android:strokeColor="#FFFFFFFF" android:strokeWidth="1.8" android:strokeLineCap="round" android:strokeLineJoin="round"
+ android:pathData="M4,22 L2.5,22 L2.5,18 Q2.5,16.5 5,16 L9,15 L13,10.5 Q14,9.5 16,9.5 L21,9.5 M28,16 L30,18 L30,22 L28,22 M10,22 L22,22 M12,15 L23,15 M17,10 L17,15 M21,9.5 L28,5.5 L30,10 M25,12 L28,16" />
+ <path android:fillColor="#00000000" android:strokeColor="#FFFFFFFF" android:strokeWidth="1.8"
+ android:pathData="M10,22 A3,3 0,1 1,4,22 A3,3 0,1 1,10,22 M28,22 A3,3 0,1 1,22,22 A3,3 0,1 1,28,22" />
+</vector>
