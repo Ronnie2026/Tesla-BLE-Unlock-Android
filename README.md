@@ -2,6 +2,10 @@
 
 特斯拉蓝牙钥匙 · 安卓版。当前版本 **0.1.12**，Android 12（API 31）及以上。
 
+> **实测环境**：特斯拉 **Model Y 2025 焕新版 标准续航版**（中国产，VIN `LRW` 开头）+
+> **努比亚豆包手机二代**（NX888J，Android 16）。其他车型、年款、固件及手机均**未验证**，
+> 不保证可用。本项目是个人实验性质的玩具，欢迎自行下载、fork、改成自己能用的版本。
+
 ## 项目结构
 
 - `app/`：Android App、BLE 通信、本机密钥、诊断日志及中文界面。
@@ -45,7 +49,7 @@ APK 位于 `app/build/outputs/apk/debug/app-debug.apk`。
 
 ## 研发踩坑记录
 
-从“能编译”到“实车可用”踩过的坑，按 **现象 → 根因 → 处理** 记录。实测环境：特斯拉 2025 款 Model Y（VIN `LRW` 开头）+ 努比亚 NX888J（Android 16）。详细排查过程见 [BLE 扫描定位权限经验](docs/ble-scan-location-permission.md)。
+从“能编译”到“实车可用”踩过的坑，按 **现象 → 根因 → 处理** 记录。实测环境：特斯拉 Model Y 2025 焕新版 标续（VIN `LRW` 开头）+ 努比亚豆包手机二代（NX888J，Android 16）。其他车型未验证；详细排查过程见 [BLE 扫描定位权限经验](docs/ble-scan-location-permission.md)。
 
 ### 扫描与权限
 

@@ -10,7 +10,7 @@
    系统就要求：已授予 `ACCESS_FINE_LOCATION` 运行时权限 **且** 系统定位服务开关打开，
    否则扫描**静默返回 0 结果**——不报错、不回调 `onScanFailed`，就是什么都收不到。
 2. **反过来，带了 `neverForLocation` 也有坑。**
-   部分厂商 ROM（本文实测：努比亚 NX888J「豆包手机」，Android 16）会**丢弃**发给
+   部分厂商 ROM（本文实测：努比亚豆包手机二代（NX888J），Android 16）会**丢弃**发给
    `neverForLocation` 客户端的特定设备广播报告：芯片和协议栈都收到了（HCI 抓包可证），
    但三方 App 的 `ScanCallback` 永远等不到它。系统蓝牙设置是特权应用不走这条路，
    所以会出现"系统设置扫得到、你的 App 扫不到"的灵异现象。
@@ -80,5 +80,5 @@ requestPermissions(arrayOf(
 - 本项目 App 内置了轮转诊断日志（含 raw adv 字段），配合 `scripts/read-device-logs.py`
   和 `scripts/parse_btsnoop.py` 可完整复现上述取证过程。
 
-实测环境：努比亚 NX888J（豆包手机），Android 16（BP2A.250605.031），2026-10。
+实测环境：努比亚豆包手机二代（NX888J），Android 16（BP2A.250605.031），2026-10。
 其他 ROM 的同类问题欢迎在 issue 中补充机型和版本。
