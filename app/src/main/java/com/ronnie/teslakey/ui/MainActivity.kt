@@ -80,6 +80,8 @@ class MainActivity : android.app.Activity() {
         buildToast()
         setContentView(root)
         render()
+        // Paired vehicles reconnect on their own; no manual connect step after a fresh app start.
+        controller.autoConnectIfPaired()
     }
 
     private fun buildScreen() {
@@ -159,7 +161,22 @@ class MainActivity : android.app.Activity() {
     }
 
     // ---- render --------------------------------------------------------------
+    private var lastRenderKey: String? = null
+
+    /** Visible-state signature; unchanged polls skip the rebuild instead of flashing the page. */
+    private fun renderKey(): String = listOf(
+        page, skin, confirmFrunk, pairStep, pairingFlow, requestedPair, vinDraft, scanError,
+        controller.paired, controller.connected, controller.busy, controller.scanning,
+        controller.status, controller.error, controller.observation,
+        controller.climateOn, controller.climateError,
+        controller.diagnosing, controller.diagnosticFound.size,
+        controller.found.joinToString(",") { it.name + it.rssi }
+    ).joinToString("|")
+
     internal fun render() {
+        val key = renderKey()
+        if (key == lastRenderKey) return
+        lastRenderKey = key
         content.removeAllViews()
         content.addView(
             when (page) {
@@ -257,14 +274,16 @@ class MainActivity : android.app.Activity() {
 
     // ---- permissions ---------------------------------------------------------
     private fun ensureBle(action: () -> Unit) {
-        if (controller.ble.permitted()) {
+        val wanted = arrayOf(
+            Manifest.permission.BLUETOOTH_SCAN,
+            Manifest.permission.BLUETOOTH_CONNECT,
+            Manifest.permission.ACCESS_FINE_LOCATION
+        )
+        if (controller.ble.permitted() && checkSelfPermission(Manifest.permission.ACCESS_FINE_LOCATION) == PackageManager.PERMISSION_GRANTED) {
             action()
         } else {
             pendingAfterPermission = action
-            requestPermissions(
-                arrayOf(Manifest.permission.BLUETOOTH_SCAN, Manifest.permission.BLUETOOTH_CONNECT),
-                REQ_BLE
-            )
+            requestPermissions(wanted, REQ_BLE)
         }
     }
 

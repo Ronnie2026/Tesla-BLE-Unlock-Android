@@ -1,6 +1,6 @@
 package com.ronnie.teslakey.protocol
 
-import org.junit.Assert.assertEquals
+import org.junit.Assert.*
 import org.junit.Test
 
 class TeslaProtocolTest {
@@ -17,10 +17,20 @@ class TeslaProtocolTest {
         assertEquals("状态未知", VehicleObservation.lockLabel(null))
     }
     @Test
-    fun advertisementNameMatchesOfficialVector() {
+    fun advertisementPrefixMatchesOfficialVector() {
+        // Official vector for this VIN ends in a VIN-derived checksum char ('C'); match on the prefix.
         assertEquals(
-            "S1a87a5a75f3df858C",
-            TeslaProtocol.advertisementName("5YJS0000000000000")
+            "S1a87a5a75f3df858",
+            TeslaProtocol.advertisementPrefix("5YJS0000000000000")
         )
+    }
+    @Test
+    fun teslaAdvertisementAcceptsAnyChecksumChar() {
+        assertTrue(TeslaProtocol.isTeslaAdvertisement("S1a87a5a75f3df858C"))
+        assertTrue(TeslaProtocol.isTeslaAdvertisement("S1a87a5a75f3df858Z"))
+        assertFalse(TeslaProtocol.isTeslaAdvertisement("s1a87a5a75f3df858c"))
+        assertFalse(TeslaProtocol.isTeslaAdvertisement("S1a87a5a75f3df85"))
+        assertFalse(TeslaProtocol.isTeslaAdvertisement("Tesla Model Y"))
+        assertFalse(TeslaProtocol.isTeslaAdvertisement(""))
     }
 }

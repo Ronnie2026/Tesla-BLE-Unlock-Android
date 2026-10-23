@@ -16,7 +16,9 @@ enum class VehicleCommand { STATUS, UNLOCK, LOCK, FRUNK, TRUNK_OPEN, TRUNK_CLOSE
 }
 object TeslaProtocol {
  fun validVin(v:String)=Regex("[A-HJ-NPR-Z0-9]{17}").matches(v)
- fun advertisementName(vin:String):String {require(validVin(vin));return "S"+digest("SHA-1",vin.toByteArray()).take(8).joinToString(""){"%02x".format(it.toInt()and 255)}+"C"}
+ /** SHA-1(VIN) hex prefix identifies the car; the advertised name ends with a VIN-derived checksum char we don't reproduce, so match on the prefix. */
+ fun advertisementPrefix(vin:String):String {require(validVin(vin));return "S"+digest("SHA-1",vin.toByteArray()).take(8).joinToString(""){"%02x".format(it.toInt()and 255)}}
+ fun isTeslaAdvertisement(name:String)=Regex("S[0-9a-fA-F]{16}[0-9A-Za-z]").matches(name)
  fun digest(type:String,b:ByteArray)=MessageDigest.getInstance(type).digest(b)
  fun random(n:Int)=ByteArray(n).also{SecureRandom().nextBytes(it)}
  fun be(v:Long)=ByteBuffer.allocate(4).putInt(v.toInt()).array()
@@ -28,6 +30,8 @@ object TeslaProtocol {
  VehicleCommand.CLIMATE_OFF->Proto.bytes(2,Proto.bytes(10,byteArrayOf()));
  VehicleCommand.CLIMATE_STATUS->Proto.bytes(2,Proto.bytes(1,Proto.bytes(3,byteArrayOf())))}
  fun envelope(route:ByteArray,uuid:ByteArray,payloadField:Int,payload:ByteArray,signature:ByteArray?=null,flags:Long=0,domain:Int=2):ByteArray {var msg=Proto.bytes(6,Proto.uint(1,domain.toLong()))+Proto.bytes(7,Proto.bytes(2,route))+Proto.bytes(payloadField,payload)+Proto.bytes(51,uuid);if(signature!=null)msg+=Proto.bytes(13,signature);if(flags!=0L)msg+=Proto.uint(52,flags);return msg}
+ /** Unsigned status query: RoutableMessage{to:VCSEC, from:route, payload=UnsignedMessage{InformationRequest{GET_STATUS}}} — official AuthMethodNone flow. */
+ fun plainStatusRequest(route:ByteArray):ByteArray=envelope(route,random(16),10,Proto.bytes(1,byteArrayOf()))
 }
 
 /** Every session is authenticated against VIN + fresh request UUID before a command can be sent. */
@@ -63,7 +67,9 @@ data class VehicleObservation(val lock:Int?,val frunk:Int?,val trunk:Int?) {
  }
 }
 object VehicleReply {
- fun observation(payload:ByteArray):VehicleObservation?{val p=Proto.parse(payload);val raw=p.b(1)?:return null;val s=Proto.parse(raw);val closures=s.b(1)?.let(Proto::parse);return VehicleObservation(s.u(2).toInt(),closures?.u(6)?.toInt(),closures?.u(5)?.toInt())}
+ /** FromVCSECMessage.vehicleStatus. Enum defaults are omitted on the wire: when the ClosureStatuses
+  * container is present, an absent member means CLOSED (0); a missing container means unknown. */
+ fun observation(payload:ByteArray):VehicleObservation?{val p=Proto.parse(payload);val raw=p.b(1)?:return null;val s=Proto.parse(raw);val present=s.b(1)!=null;val c=s.b(1)?.let{Proto.parse(it)};val frunk=if(!present)null else (c?.u(6)?.toInt()?:0);val trunk=if(!present)null else (c?.u(5)?.toInt()?:0);return VehicleObservation(s.u(2).toInt(),frunk,trunk)}
  /** null means keep waiting. No optimistic state changes based solely on write success. */
  fun commandStatus(payload:ByteArray):Int?{val s=Proto.parse(payload).b(4)?.let(Proto::parse)?:return null;val signed=s.b(2)?.let(Proto::parse);if(signed!=null&&signed.u(2)!=0L)return 2;return s.u(1).toInt()}
 }

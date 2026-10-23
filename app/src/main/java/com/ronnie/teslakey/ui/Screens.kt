@@ -15,6 +15,7 @@ import android.widget.ImageView
 import android.widget.LinearLayout
 import android.widget.TextView
 import com.ronnie.teslakey.protocol.VehicleCommand
+import com.ronnie.teslakey.protocol.TeslaProtocol
 import com.ronnie.teslakey.R
 import com.ronnie.teslakey.ble.TeslaBle
 import com.ronnie.teslakey.ui.MainActivity.Page
@@ -526,7 +527,7 @@ private fun MainActivity.stepVin(): View {
     else box.addView(smallNote("VIN 可在车机「软件」页面或前挡风玻璃处查看。").apply { margins(top = 8f) })
 
     box.addView(wideButton("搜索车辆", "blue") { onSearchVehicle() }.apply { margins(top = 20f) })
-    box.addView(smallNote("正式版需开启手机蓝牙并允许「附近设备」访问。").apply { margins(top = 12f) })
+    box.addView(smallNote("需开启手机蓝牙、定位服务，并允许「附近设备」和位置权限，否则部分手机会扫不到车辆。").apply { margins(top = 12f) })
     box.addView(diagnosticPanel())
     return box
 }
@@ -544,7 +545,7 @@ private fun MainActivity.diagnosticPanel(): View {
     })
     if (controller.diagnosing) box.addView(hint("正在监听附近 BLE 广播…"))
     if (controller.diagnosticFound.isEmpty() && !controller.diagnosing) {
-        box.addView(smallNote("不过滤地监听附近所有 BLE 广播，用于确认手机射频与扫描是否正常。真车在附近时会显示它的 SxxxxxxxxC 广播名。").apply { margins(top = 10f) })
+        box.addView(smallNote("不过滤地监听附近所有 BLE 广播，用于确认手机射频与扫描是否正常。真车在附近时会广播以 S 开头的名称：S + 16 位识别字符 + 1 位校验字符。").apply { margins(top = 10f) })
     }
     controller.diagnosticFound.forEach { f -> box.addView(diagRow(f)) }
     return box
@@ -574,8 +575,13 @@ private fun MainActivity.stepScan(): View {
         }
         controller.found.isNotEmpty() -> {
             box.addView(text("选择你的车辆", 22f, Pal.fg, bold = true))
-            controller.found.forEach { f ->
-                box.addView(listRow(R.drawable.ic_car_front, f.name, "信号强度 ${f.rssi} dBm", "配对") { selectDevice(f.device.address) }
+            // The device whose advertised name matches the VIN-derived prefix is the user's car; show it first.
+            val vin = if (TeslaProtocol.validVin(vinDraft)) vinDraft else controller.vin
+            val prefix = if (TeslaProtocol.validVin(vin)) TeslaProtocol.advertisementPrefix(vin) else ""
+            controller.found.sortedByDescending { f -> f.name.startsWith(prefix) }.forEach { f ->
+                val mine = prefix.isNotEmpty() && f.name.startsWith(prefix)
+                box.addView(listRow(R.drawable.ic_car_front, f.name,
+                    if (mine) "你的车辆 · 信号强度 ${f.rssi} dBm" else "信号强度 ${f.rssi} dBm", "配对") { selectDevice(f.device.address) }
                     .apply { margins(top = 12f) })
             }
             box.addView(wideButton("重新搜索", "secondary") { onRescan() }.apply { margins(top = 20f) })
@@ -620,7 +626,7 @@ private fun MainActivity.stepPair(): View {
         box.addView(orbit(R.drawable.ic_key))
         box.addView(instruction("1", "坐进车辆，将已授权的实体钥匙卡放到车辆指定感应区。"))
         box.addView(instruction("2", "按照车机提示确认添加此手机钥匙。"))
-        box.addView(smallNote("感应位置及确认方式以车型和车机提示为准。").apply { margins(top = 16f) })
+        box.addView(smallNote("车机确认后会自动退出该界面，属正常现象；完成后回到 App 点下方按钮验证。感应位置以车型为准。").apply { margins(top = 16f) })
         box.addView(wideButton("我已在车机确认，验证钥匙", "blue", enabled = !controller.busy) { onCardConfirmed() }.apply { margins(top = 20f) })
     } else {
         box.addView(text("正在验证车辆钥匙", 22f, Pal.fg, bold = true))

@@ -34,6 +34,7 @@ class VehicleController(context:Context) {
  private var climateQueued:VehicleCommand?=null
  private var lastClimatePoll=0L
  private var pending:VehicleCommand?=null
+ private var vcsecRoute=TeslaProtocol.random(16)
  private var pairing=false
  private var waitingHello=false
  private var sequence=0
@@ -51,7 +52,7 @@ class VehicleController(context:Context) {
  }
  val canControl get()=connected&&!busy&&session?.ready==true
  init {
-  ble.onFound={f->if(reconnecting){reconnecting=false;connect(f,false)}else if(found.none{it.device.address==f.device.address}){found.add(f);onChange()}}
+  ble.onFound={f->if(reconnecting){if(TeslaProtocol.validVin(vin)&&f.name.startsWith(TeslaProtocol.advertisementPrefix(vin))){reconnecting=false;connect(f,false)}}else if(found.none{it.device.address==f.device.address}){found.add(f);onChange()}}
   ble.onScanEnd={reconnecting=false;scanning=false
    if(found.isEmpty()){
     val devices=ble.scanDevices.values
@@ -63,19 +64,25 @@ class VehicleController(context:Context) {
   ble.onDiagnostic={f->if(diagnosticFound.none{it.device.address==f.device.address}){diagnosticFound.add(f);onChange()}}
   ble.onDiagnosticEnd={diagnosing=false;onChange()}
   ble.onError={fail(it)}
-  ble.onDisconnected={handler.removeCallbacks(refresh);session=null;resetClimate();connected=false;busy=false;waitingHello=false;pending=null;observation=null;sequence++;status="蓝牙连接已断开";onChange()}
+  ble.onDisconnected={handler.removeCallbacks(refresh);session=null;resetClimate();connected=false;busy=false;waitingHello=false;pending=null;observation=null;sequence++;status="蓝牙连接已断开";onChange();
+   // Unexpected drop while paired: quietly reconnect instead of leaving the user stranded.
+   if(paired&&TeslaProtocol.validVin(vin))handler.postDelayed({autoConnectIfPaired()},3000)}
   ble.onReady={busy=false;status="蓝牙已连接，请验证钥匙";if(!pairing)verify() else onChange()}
   ble.onMessage={m->receive(m)}
  }
- fun scan(input:String){log.begin("vehicle.scan");val v=input.trim().uppercase();require(TeslaProtocol.validVin(v)){"请输入有效的 17 位 VIN（不含 I、O、Q）"};disconnect();if(v!=vin){vin=v;paired=false};keys.load(v);keys.prefs.edit().putString("vin",v).putBoolean("paired",paired).apply();found.clear();error="";scanning=true;status="正在搜索你的 Model Y";try{ble.scan(v)}catch(e:Exception){fail(e.message?:"搜索失败")};onChange()}
- fun connect(f:TeslaBle.Found,forPair:Boolean){scanning=false;ble.stopScan();pairing=forPair;busy=true;error="";status="正在连接 Model Y";observation=null;try{ble.connect(f.device)}catch(e:Exception){fail(e.message?:"连接失败")};onChange()}
+ fun scan(input:String){log.begin("vehicle.scan");val v=input.trim().uppercase();require(TeslaProtocol.validVin(v)){"请输入有效的 17 位 VIN（不含 I、O、Q）"};disconnect();vcsecRoute=TeslaProtocol.random(16);if(v!=vin){vin=v;paired=false};keys.load(v);keys.prefs.edit().putString("vin",v).putBoolean("paired",paired).apply();found.clear();error="";scanning=true;status="正在搜索你的 Model Y";try{ble.scan(v)}catch(e:Exception){fail(e.message?:"搜索失败")};onChange()}
+ fun connect(f:TeslaBle.Found,forPair:Boolean){scanning=false;ble.stopScan();pairing=forPair;busy=true;error="";status="正在连接 Model Y";observation=null;vcsecRoute=TeslaProtocol.random(16);try{ble.connect(f.device)}catch(e:Exception){fail(e.message?:"连接失败")};onChange()}
  fun startDiagnostic(){diagnosticFound.clear();diagnosing=true;error="";try{ble.scanAll()}catch(e:Exception){fail(e.message?:"诊断扫描失败")};onChange()}
  fun stopDiagnostic(){ble.stopScan();diagnosing=false;onChange()}
  fun requestPair(){log.event("pair.request");check(ble.ready&&!busy){"请先搜索并连接车辆"};busy=true;error="";status="正在发送添加钥匙请求";try{ble.send(TeslaProtocol.pairRequest(keys.load(vin).publicBytes));status="请使用实体卡并按车机提示确认";val s=++sequence;handler.postDelayed({if(sequence==s){busy=false;onChange()}},1200)}catch(e:Exception){fail(e.message?:"无法发送配对请求")};onChange()}
  fun verify(){log.event("session.verify","busy=$busy ready=${ble.ready}");if(!ble.ready||busy)return;error="";busy=true;waitingHello=true;status="正在验证车辆钥匙";session=TeslaSession(vin,keys.load(vin));try{ble.send(session!!.hello());deadline(12000,"钥匙验证超时。请确认车机已添加此手机钥匙，再重试。 ")}catch(e:Exception){fail(e.message?:"无法验证钥匙")};onChange()}
  fun command(cmd:VehicleCommand){log.event("command.request","command=$cmd allowed=$canControl");if(!canControl)return
   if(cmd.domain==3){startClimate(cmd);return}
-  handler.removeCallbacks(refresh);busy=true;error="";pending=cmd;status=if(cmd==VehicleCommand.STATUS)"正在读取车辆状态" else "正在等待车辆响应";try{ble.send(session!!.command(cmd));deadline(12000,"未收到确认，执行结果未知。请检查车辆实际状态后再操作。") }catch(e:Exception){fail(e.message?:"命令未能发送")};onChange()
+  handler.removeCallbacks(refresh);busy=true;error="";pending=cmd
+  if(cmd==VehicleCommand.STATUS){
+   // Official flow: status is an unsigned InformationRequest; the car answers with plaintext VehicleStatus.
+   status="正在读取车辆状态";try{ble.send(TeslaProtocol.plainStatusRequest(session?.route?:vcsecRoute));deadline(8000,"读取车辆状态超时，请靠近车辆重试")}catch(e:Exception){fail(e.message?:"状态请求未能发送")};onChange();return}
+  status="正在等待车辆响应";try{ble.send(session!!.command(cmd));deadline(12000,"未收到确认，执行结果未知。请检查车辆实际状态后再操作。") }catch(e:Exception){fail(e.message?:"命令未能发送")};onChange()
  }
  private fun deadline(ms:Long,message:String){val s=++sequence;handler.postDelayed({if(sequence==s&&busy){log.event("operation.timeout",message);
    if(waitingClimateHello||pending?.domain==3){climateFailure("空调连接或响应超时，执行结果未知。请唤醒车辆后重试。");return@postDelayed};pending=null;waitingHello=false;busy=false;session=null;resetClimate();connected=false;observation=null;error=message;status="请重新验证钥匙";onChange()}},ms)}
@@ -91,7 +98,15 @@ class VehicleController(context:Context) {
    val active=climateSession?:return
    if(!active.accepts(m))return
    try{
-    val cmd=pending!!;val reply=ClimateProtocol.reply(active.decryptReply(m))
+    val cmd=pending!!;
+    // CarServer responses arrive plaintext as well; decrypt only when the car signs an encrypted response.
+    val plain=try{active.decryptReply(m)}catch(e:Exception){
+     val fields=runCatching{Proto.parse(m)}.getOrNull()?:throw e
+     val hasResponseSig=fields.b(13)?.let{Proto.parse(it).b(9)}!=null
+     if(hasResponseSig)throw e
+     fields.b(10)?:throw e
+    }
+    val reply=ClimateProtocol.reply(plain)
     log.event("climate.reply","command=$cmd success=${reply.success} on=${reply.on}")
     if(reply.success==false){climateFailure("车辆拒绝空调操作：${reply.reason?:"请检查车辆状态及权限"}");return}
     if(reply.on!=null)climateOn=reply.on
@@ -111,7 +126,15 @@ class VehicleController(context:Context) {
    };return}
   val cmd=pending?:return
   if(session?.accepts(m)!=true)return
-  try{val plain=session!!.decryptReply(m);val obs=VehicleReply.observation(plain);val result=VehicleReply.commandStatus(plain);log.event("command.reply","command=$cmd result=$result observation=$obs")
+  try{
+   // VCSEC replies are plaintext FromVCSECMessage; encrypted replies carry AES_GCM_Response_data (field 13/9).
+   val plain=try{session!!.decryptReply(m)}catch(e:Exception){
+    val fields=runCatching{Proto.parse(m)}.getOrNull()?:throw e
+    val hasResponseSig=fields.b(13)?.let{Proto.parse(it).b(9)}!=null
+    if(hasResponseSig)throw e
+    fields.b(10)?:throw e
+   }
+   val obs=VehicleReply.observation(plain);val result=VehicleReply.commandStatus(plain);log.event("command.reply","command=$cmd result=$result observation=$obs")
    if(result==2){fail("车辆拒绝了此操作，请检查权限及车辆状态");return}
    if(obs!=null){observation=obs;complete();if(cmd!=VehicleCommand.STATUS)onNotice("已收到车辆状态，请核对实际状态");return}
    if(result==0){complete();if(cmd!=VehicleCommand.STATUS){onNotice("车辆已确认命令，正在读取状态");handler.postDelayed({if(canControl)command(VehicleCommand.STATUS)},300)}}
@@ -145,5 +168,11 @@ class VehicleController(context:Context) {
  fun forget(){disconnect();keys.forget();vin="";paired=false;onChange()}
  fun background(){log.event("app.background");wasBackground=(connected||ble.ready||scanning||busy);disconnect()}
  fun foreground(){log.event("app.foreground");if(wasBackground){wasBackground=false;if(paired&&TeslaProtocol.validVin(vin)){val savedVin=vin;scan(savedVin);reconnecting=scanning;status=if(scanning)"正在重新连接车辆" else status}else status="已暂停连接，请重新连接车辆"};onChange()}
+ /** Called when the app process starts fresh: silently reconnect to a paired vehicle. */
+ fun autoConnectIfPaired(){
+  if(!paired||!TeslaProtocol.validVin(vin))return
+  if(!ble.permitted()||!ble.enabled){status="未连接";return}
+  log.event("auto.connect");val savedVin=vin;scan(savedVin);reconnecting=scanning;status=if(scanning)"正在重新连接车辆" else status;onChange()
+ }
  fun close(){disconnect();onChange={};onNotice={}}
 }
