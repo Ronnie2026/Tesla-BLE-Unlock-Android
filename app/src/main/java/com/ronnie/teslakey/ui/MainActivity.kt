@@ -57,9 +57,9 @@ class MainActivity : android.app.Activity() {
     private var toastHide: Runnable? = null
 
     // ---- derived state -------------------------------------------------------
-    internal val hasKey: Boolean get() = controller.paired || controller.demo
+    internal val hasKey: Boolean get() = controller.paired
     internal val isConnected: Boolean
-        get() = if (controller.demo) controller.demoConnected else controller.connected
+        get() = controller.connected
     internal val controlsEnabled: Boolean get() = controller.canControl
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -305,12 +305,6 @@ class MainActivity : android.app.Activity() {
         }
     }
 
-    internal fun onUseDemo() {
-        controller.setDemo(true)
-        page = Page.CAR
-        render()
-    }
-
     internal fun onCancelScan() {
         controller.disconnect()
         pairStep = 0
@@ -381,15 +375,6 @@ class MainActivity : android.app.Activity() {
 
     internal fun onConnectionTap() {
         if (!hasKey) { navigate(Page.ADD); return }
-        if (controller.demo) {
-            if (controller.demoConnected)
-                showSheet("断开蓝牙连接？", "断开后可在演示模式重新连接体验。", "断开连接",
-                    { controller.setDemoConnection(false); closeSheet() })
-            else
-                showSheet("连接演示车辆", "演示模式不会连接或控制真实车辆。", "模拟连接",
-                    { controller.setDemoConnection(true); closeSheet() })
-            return
-        }
         if (controller.connected) {
             showSheet("断开蓝牙连接？", "断开后，靠近车辆重新连接即可继续使用控制功能。", "断开连接",
                 { controller.disconnect(); closeSheet() })
@@ -413,7 +398,7 @@ class MainActivity : android.app.Activity() {
             "此操作会清除本机配对记录。车辆端的钥匙仍需在车机「车锁」中单独删除。",
             "移除记录",
             {
-                if (controller.demo) controller.setDemo(false) else controller.forget()
+                controller.forget()
                 closeSheet()
                 page = Page.ME
                 render()

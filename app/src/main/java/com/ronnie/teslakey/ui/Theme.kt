@@ -195,12 +195,13 @@ fun Context.wideButton(
         else -> Pal.primaryFg
     }
     val tv = text(label, 15f, fg, bold = true, align = Gravity.CENTER)
-    tv.background = clickableBg(12f, fill)
+    tv.background = clickableBg(12f, if (enabled) fill else Pal.secondaryBg)
     tv.minHeight = dp(minHeightDp)
     tv.gravity = Gravity.CENTER
     tv.pad(16f, 12f, 16f, 12f)
     tv.layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT)
     tv.alpha = if (enabled) 1f else 0.35f
+    tv.isEnabled = enabled
     tv.isClickable = enabled && onClick != null
     if (enabled && onClick != null) tv.setOnClickListener { onClick() }
     return tv
