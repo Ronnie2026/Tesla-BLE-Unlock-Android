@@ -73,11 +73,25 @@ APK 位于 `app/build/outputs/apk/debug/app-debug.apk`。
   同时申请 `ACCESS_FINE_LOCATION` 并要求定位服务开启。
 - **去掉标志但不给定位权限 = 静默 0 结果**：无标志的扫描需要精确定位权限，否则系统按资格过滤，
   不报错、不回调失败。三个权限要一起运行时申请。
-- **广播名末位不是固定 `C`**：`S` + SHA-1(VIN) 前 16 位 hex + VIN 派生的校验字符，每辆车不同。
-  硬编码末位会导致永远匹配不上；应按 16 位 hex 前缀匹配，并用 `S[0-9a-fA-F]{16}.` 识别任意特斯拉广播名，
-  附近有多台时按 VIN 前缀排序标注“你的车辆”。
+- **广播名格式**：官方 `protocol.md` 明确为 `S + <ID> + C`，`<ID>` 是 VIN 的 SHA-1 前 8 字节小写 hex，
+  末位是字面量 `C`（示例 VIN `5YJS0000000000000` → `S1a87a5a75f3df858C`）。
+  本 App 按前 16 位 hex 前缀匹配、对末位更宽容，便于应对不同固件；附近有多台特斯拉时
+  按 VIN 前缀排序标注“你的车辆”。
 - **车不是持续广播**：车机熄屏、整车低功耗后停止发送钥匙广播，广播呈约 30 秒的间歇簇。
   扫不到时先点亮车机屏幕、靠近车辆再扫。
+
+### 如何识别一台特斯拉 BLE 设备
+
+- **广播名**：`S + VIN 的 SHA-1 前 8 字节小写 hex + C`，共 18 个字符（见官方 `pkg/protocol/protocol.md`）。
+- **GATT 服务/特征**（见官方 `pkg/connector/ble/ble.go`）：
+  服务 `00000211-b2d1-43f0-9b88-960cebf8b91e`，
+  写入特征 `00000212-b2d1-43f0-9b88-960cebf8b91e`，
+  读取特征 `00000213-b2d1-43f0-9b88-960cebf8b91e`（订阅通知）。
+  连接失败时的“未找到特斯拉钥匙服务”就是这三个 UUID 没有匹配上。
+- 实测（2026 款固件）该车的广播还携带 Apple iBeacon 格式厂商数据
+  （UUID `74278bda-b644-4520-8f0c-720eaf059935`）和一个 16 位服务 UUID `0x1122`；
+  官方文档未描述广播内容，识别设备以广播名和 GATT UUID 为准。
+- BLE 帧格式：报文前加 2 字节大端长度；VCSEC 最多同时维持 3 条 BLE 连接。
 
 ### 协议与加密
 
@@ -131,3 +145,20 @@ APK 位于 `app/build/outputs/apk/debug/app-debug.apk`。
 **教训**：不要用“系统设置能扫到”证明 App 代码没问题，也不要用“App 扫不到”直接怀疑框架——
 先确认广播是否真的到达了芯片/协议栈这一层。协议层单测用虚拟密钥和官方字节向量，
 能回归协议改动，但不能替代实车验收。
+
+## 致谢与引用
+
+本项目的协议实现完全参考以下公开资料，感谢作者们的开源分享：
+
+- [teslamotors/vehicle-command](https://github.com/teslamotors/vehicle-command)（Apache-2.0）：
+  特斯拉官方开源的车辆命令协议实现。本项目参考其
+  `pkg/protocol/protocol.md`（BLE 广播名、帧格式、报文封装）、
+  `pkg/protocol/protobuf/vcsec.proto`、`universal_message.proto`、`signatures.proto`
+  （VCSEC 命令、RoutableMessage 与签名 AAD 字段）、
+  `pkg/vehicle/vcsec.go`（VCSEC 明文应答与状态查询语义）、
+  `pkg/vehicle/climate.go`（空调命令）、`pkg/connector/ble/ble.go`（GATT UUID）。
+- [Android 官方文档](https://developer.android.com/)：BLE 扫描、权限与 GATT API。
+- Kotlin、Gradle、AndroidX 等开源生态的所有维护者。
+
+本项目为个人学习研究，协议细节若与官方实现不一致，以官方仓库为准；
+欢迎提交 PR 修正，共同遵守开源精神。
