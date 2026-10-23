@@ -7,7 +7,7 @@
 - `app/`：Android App、BLE 通信、本机密钥、诊断日志及中文界面。
 - `protocol/`：VCSEC 报文、认证会话、BLE 分帧及协议单元测试。
 - `prototype/`：早期可交互 HTML 设计原型；与 Android 最新功能并非完全同步。
-- `docs/`：图标与日志说明、[BLE 扫描定位权限经验](docs/ble-scan-location-permission.md)。
+- `docs/`：图标与日志说明、[BLE 扫描定位权限经验](docs/ble-scan-location-permission.md)、[研发踩坑记录](docs/development-lessons.md)。
 - `scripts/read-device-logs.py`：通过 ADB 导出手机本地历史日志；`scripts/parse_btsnoop.py`：解析 HCI 抓包中的 LE 广播。
 
 ## 已接入功能
