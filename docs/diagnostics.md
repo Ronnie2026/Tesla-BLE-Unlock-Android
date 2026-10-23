@@ -21,3 +21,14 @@ python3 scripts/read-device-logs.py
 脚本依赖 debug 包的 run-as 权限，不适用于未来不可调试的 release 包。
 
 实车测试：保持前台，搜索一次，等待结果；如有必要再运行诊断扫描。发生问题后保留 App 数据，告诉维护者大致测试时间。日志不能补录升级前发生的问题。
+
+## 已排查的扫描问题（2026-10-23，nubia NX888J / Android 16）
+
+现象：App 扫描收不到车（车广播名 `S7ee461a98b6db8a8C`，系统蓝牙设置可以看到）。
+HCI 抓包证明芯片和协议栈都收到了广播，但栈不分发给带 `neverForLocation` 标志的三方扫描客户端；
+服务 UUID、名字过滤、扩展广播（setLegacy(false)）等配置全部同样被丢弃。
+根因：该 ROM 的栈对 `neverForLocation` 客户端丢弃此车广播报告。
+修复：`BLUETOOTH_SCAN` 不带 `neverForLocation`，并申请 `ACCESS_FINE_LOCATION` 且定位服务开启，
+扫描恢复后车辆立即出现在配对列表。三款机型以下情况也会扫不到：车机熄屏后车辆进入低功耗、
+停止发送钥匙广播（广播呈约 30 秒间歇簇）；靠近车辆、点亮车机屏幕即可恢复。
+诊断日志的 raw adv 字段记录完整广播原文，可据此区分"车未广播"与"栈未分发"。

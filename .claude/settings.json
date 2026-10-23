@@ -1,0 +1,9 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(adb pull *)",
+      "Bash(python3 -c ' *)",
+      "Bash(python3 /Users/ronnie_mac/Documents/ChatGPT/Tls_BLE_Android/scripts/read-device-logs.py /Users/ronnie_mac/Documents/ChatGPT/Tls_BLE_Android/captures/scan-debug3.tar)"
+    ]
+  }
+}
