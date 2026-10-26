@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 仅允许发布站使用明文 HTTP（该站点暂未部署 TLS）；其余域名仍强制 HTTPS。
+     安装包完整性由 SHA-256 与 APK 签名校验保证，不依赖传输层。 -->
+<network-security-config>
+    <domain-config cleartextTrafficPermitted="true">
+        <domain includeSubdomains="false">benbenyu.top</domain>
+    </domain-config>
+</network-security-config>

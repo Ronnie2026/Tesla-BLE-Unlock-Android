@@ -20,9 +20,10 @@ import java.security.MessageDigest
  * { available, applicationId, versionCode, versionName, apkUrl (relative to latest.json),
  *   sha256, sizeBytes, publishedAt, minAndroid, minSdk?, notes[], releaseNotes }
  *
- * Only HTTPS on the trusted host is accepted, including every redirect hop. A malformed or
- * unreachable manifest yields Failed; this never affects vehicle control features, and nothing
- * beyond the manifest/APK is ever uploaded.
+ * Only the trusted host is accepted, including every redirect hop (HTTPS preferred, HTTP fallback
+ * because this personal site has no TLS listener). Integrity relies on size, SHA-256 and the APK
+ * signature. A malformed or unreachable manifest yields Failed; this never affects vehicle control
+ * features, and nothing beyond the manifest/APK is ever uploaded.
  */
 class UpdateChecker(private val context: Context) {
 
@@ -44,6 +45,12 @@ class UpdateChecker(private val context: Context) {
     )
 
     companion object {
+        /** HTTPS is preferred; the personal site currently has no TLS listener, so HTTP is the fallback.
+         *  Integrity does not rely on transport: size + SHA-256 + APK signature are always verified. */
+        val CHECK_URLS = listOf(
+            "https://benbenyu.top/apps/tesla-ble/latest.json",
+            "http://benbenyu.top/apps/tesla-ble/latest.json"
+        )
         const val CHECK_URL = "https://benbenyu.top/apps/tesla-ble/latest.json"
         private const val TRUSTED_HOST = "benbenyu.top"
         private const val MAX_REDIRECTS = 5
@@ -51,12 +58,18 @@ class UpdateChecker(private val context: Context) {
         private const val READ_TIMEOUT_MS = 10000
     }
 
-    /** Blocking network call; run off the main thread. */
-    fun check(): CheckResult = try {
-        val body = openStream(URL(CHECK_URL)).use { it.readBytes().toString(Charsets.UTF_8) }
-        parse(body)
-    } catch (_: Exception) {
-        CheckResult.Failed
+    /** Blocking network call; run off the main thread. Tries HTTPS first, then HTTP. */
+    fun check(): CheckResult {
+        for (url in CHECK_URLS) {
+            try {
+                val body = openStream(URL(url)).use { it.readBytes().toString(Charsets.UTF_8) }
+                val result = parse(body)
+                if (result != CheckResult.Failed) return result
+            } catch (_: Exception) {
+                // Try the next scheme.
+            }
+        }
+        return CheckResult.Failed
     }
 
     fun parse(body: String): CheckResult = try {
@@ -100,11 +113,12 @@ class UpdateChecker(private val context: Context) {
         return o.optString("releaseNotes").split('\n').map { it.trim() }.filter { it.isNotEmpty() }
     }
 
-    /** apkUrl is relative to latest.json and must stay on the trusted host over HTTPS. */
+    /** apkUrl is relative to latest.json and must stay on the trusted host (http or https). */
     private fun resolveApkUrl(raw: String): String? {
         if (raw.isEmpty()) return null
         val resolved = URI(CHECK_URL).resolve(raw)
-        val ok = resolved.scheme.equals("https", true) && resolved.host == TRUSTED_HOST
+        val ok = (resolved.scheme.equals("https", true) || resolved.scheme.equals("http", true)) &&
+            resolved.host == TRUSTED_HOST
         return if (ok) resolved.toString() else null
     }
 
@@ -113,7 +127,8 @@ class UpdateChecker(private val context: Context) {
         var url = start
         var hops = 0
         while (true) {
-            require(url.protocol.equals("https", true) && url.host == TRUSTED_HOST) { "untrusted url: $url" }
+            val schemeOk = url.protocol.equals("https", true) || url.protocol.equals("http", true)
+            require(schemeOk && url.host == TRUSTED_HOST) { "untrusted url: $url" }
             val conn = url.openConnection() as HttpURLConnection
             conn.instanceFollowRedirects = false
             conn.connectTimeout = CONNECT_TIMEOUT_MS

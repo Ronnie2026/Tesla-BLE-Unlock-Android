@@ -57,8 +57,9 @@ APK 位于 `app/build/outputs/apk/debug/app-debug.apk`。
   `sha256`、`sizeBytes`、`publishedAt`、`minAndroid`、`minSdk`（可选）、`notes[]`、`releaseNotes`。
 - 仅当 `available=true`、包名一致且远端 `versionCode` **整数**大于本地版本时提示，
   弹窗显示版本号、发布日期、文件大小和更新日志，提供「立即更新 / 稍后」。
-- 网络请求与下载只允许 HTTPS 且域名为 `benbenyu.top`（每一跳重定向都校验），证书异常时直接失败，
-  不做降级或绕过；失败只在手动检查时提示，不影响车辆控制功能。
+- 只允许访问 `benbenyu.top`（每一跳重定向都校验协议与域名）；优先 HTTPS，该站点暂未部署 TLS 时
+  回退 HTTP（`network_security_config` 仅对该域名放开明文）。安装包完整性由 SHA-256 与 APK 签名
+  校验保证，不依赖传输层；失败只在手动检查时提示，不影响车辆控制功能。
 - 下载显示进度并可取消；校验文件大小、SHA-256、APK 包名/版本，以及签名证书与已安装版本一致，
   任一不符都禁止安装。
 - 安装走 FileProvider + 系统安装器，由用户确认；引导未知来源授权后返回会自动继续安装。
