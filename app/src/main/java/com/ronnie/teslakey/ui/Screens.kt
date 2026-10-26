@@ -172,7 +172,7 @@ internal fun MainActivity.carScreen(): View {
         else if (controller.busy) root.addView(text(controller.status, 12f, Pal.muted).apply { pad(25f, 4f, 25f, 12f) })
         return root
     }
-    val small = resources.displayMetrics.heightPixels < 1600
+    val small = isSmallScreen()
     root.addView(header("我的 Model Y", "特斯拉蓝牙钥匙"))
     if (small) root.addView(compactControls()) else root.addView(hero())
     root.addView(statusRow())
@@ -195,10 +195,16 @@ internal fun MainActivity.carScreen(): View {
     return root
 }
 
+/** True on short screens (height < 800dp), e.g. 480x854 @196dpi; density-independent. */
+private fun MainActivity.isSmallScreen(): Boolean {
+    val dm = resources.displayMetrics
+    return dm.heightPixels * 160f / dm.densityDpi < 800f
+}
+
 private fun MainActivity.hero(): View {
     val h = resources.displayMetrics.heightPixels
     // Short screens (e.g. 480x854, ZTE Changxiang F60 class) need a smaller hero so controls stay reachable.
-    val small = h < 1600
+    val small = isSmallScreen()
     val heroHeight = (when { small -> h * 0.26f; skin == "classic" -> h * 0.32f; else -> h * 0.44f }).toInt()
     val hero = frame()
     hero.layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, heroHeight)
@@ -834,7 +840,7 @@ private fun MainActivity.climateControls(): View {
 private fun MainActivity.officialHero(): View {
     val hero = FrameLayout(this).apply {
         layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT,
-            (resources.displayMetrics.heightPixels * (if (resources.displayMetrics.heightPixels < 1600) 0.50f else 0.66f)).toInt())
+            (resources.displayMetrics.heightPixels * (if (isSmallScreen()) 0.50f else 0.66f)).toInt())
     }
     val artwork = getDrawable(R.drawable.car_official)!!
     hero.addView(ImageView(this).apply {
