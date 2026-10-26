@@ -22,7 +22,7 @@ def hasReleaseKeystore = (keystoreProps.getProperty('storeFile') ?: new File(Sys
 android {
  namespace 'com.ronnie.teslakey'
  compileSdk 34
- defaultConfig { applicationId 'com.ronnie.teslakey'; minSdk 31; targetSdk 34; versionCode 20261026; versionName '20261026' }
+ defaultConfig { applicationId 'com.ronnie.teslakey'; minSdk 31; targetSdk 34; versionCode 20261027; versionName '20261027' }
  compileOptions { sourceCompatibility JavaVersion.VERSION_17; targetCompatibility JavaVersion.VERSION_17 }
  kotlinOptions { jvmTarget = '17' }
  signingConfigs {

@@ -172,6 +172,16 @@ internal fun MainActivity.carScreen(): View {
         else if (controller.busy) root.addView(text(controller.status, 12f, Pal.muted).apply { pad(25f, 4f, 25f, 12f) })
         return root
     }
+    if (skin == "hippo") {
+        root.addView(header("可爱河马", "特斯拉蓝牙钥匙"))
+        root.addView(hippoHero())
+        // Same feedback the other skins show: failures stay visible right under the buttons.
+        if (controller.error.isNotEmpty()) root.addView(text(controller.error, 12f, Pal.danger, align = Gravity.CENTER).apply { pad(24f, 0f, 24f, 8f) })
+        else if (controller.busy) root.addView(text(controller.status, 12f, Pal.muted, align = Gravity.CENTER).apply { pad(24f, 0f, 24f, 8f) })
+        root.addView(statusRow())
+        root.addView(climateControls())
+        return root
+    }
     val small = isSmallScreen()
     root.addView(header("我的 Model Y", "特斯拉蓝牙钥匙"))
     if (small) root.addView(compactControls()) else root.addView(hero())
@@ -195,10 +205,16 @@ internal fun MainActivity.carScreen(): View {
     return root
 }
 
-/** True on short screens (height < 800dp), e.g. 480x854 @196dpi; density-independent. */
+/**
+ * True only on genuinely short screens (available height < 640dp), e.g. 480x854 @196dpi (~390dp).
+ *
+ * `displayMetrics.heightPixels` already excludes the status/navigation bars, so a 6.x inch phone
+ * (800dp panel minus bars) lands around 740dp — using a 800dp cutoff misjudged those as small and
+ * dropped the car artwork from the cockpit skin.
+ */
 private fun MainActivity.isSmallScreen(): Boolean {
     val dm = resources.displayMetrics
-    return dm.heightPixels * 160f / dm.densityDpi < 800f
+    return dm.heightPixels * 160f / dm.densityDpi < 640f
 }
 
 private fun MainActivity.hero(): View {
@@ -379,7 +395,7 @@ internal fun MainActivity.meScreen(): View {
     body.pad(24f, 8f, 24f, 24f)
 
     body.addView(listRow(R.drawable.ic_plus_lg, "添加钥匙", "搜索并配对你的车辆") { navigate(Page.ADD) })
-    body.addView(listRow(R.drawable.ic_palette, "换肤", "选择适合你的控制方式", when(skin){"official"->"官方版";"cockpit"->"车机版";else->"功能版"}) { navigate(Page.SKIN) })
+    body.addView(listRow(R.drawable.ic_palette, "换肤", "选择适合你的控制方式", when(skin){"official"->"官方版";"cockpit"->"车机版";"classic"->"功能版";"hippo"->"可爱河马";else->"功能版"}) { navigate(Page.SKIN) })
     body.addView(listRow(R.drawable.ic_key, "帮助", "如何添加钥匙？") { showAddKeyHelp() })
     body.addView(listRow(R.drawable.ic_download, "检查更新", "当前版本 ${versionName()}") { onCheckUpdate() })
 
@@ -403,7 +419,8 @@ internal fun MainActivity.skinScreen(): View {
     body.addView(modeOption(R.drawable.ic_car_front, "官方版", "大幅俯视图 · 在车身上直接操作", skin == "official") { chooseSkin("official") }.apply { margins(top = 16f) })
     body.addView(modeOption(R.drawable.ic_car_front, "车机版", "车辆俯视图 · 点击部位控制", skin == "cockpit") { chooseSkin("cockpit") }.apply { margins(top = 16f) })
     body.addView(modeOption(R.drawable.ic_broadcast, "功能版", "经典大按钮 · 常用操作一目了然", skin == "classic") { chooseSkin("classic") }.apply { margins(top = 12f) })
-    body.addView(smallNote("三款皮肤共用车辆状态，切换不影响钥匙和连接。").apply { margins(top = 16f) })
+    body.addView(modeOption(R.drawable.ic_bluetooth, "可爱河马", "河马助手 · 蓝牙状态与车辆控制", skin == "hippo") { chooseSkin("hippo") }.apply { margins(top = 12f) })
+    body.addView(smallNote("四款皮肤共用车辆状态，切换不影响钥匙和连接。").apply { margins(top = 16f) })
     body.addView(wideButton("查看车辆页面", "light") { navigate(Page.CAR) }.apply { margins(top = 24f) })
     root.addView(body)
     return root
@@ -443,7 +460,7 @@ internal fun MainActivity.settingsScreen(): View {
 
     body.addView(sectionLabel("操作偏好"))
     body.addView(switchRow(R.drawable.ic_shield_check, "打开前备箱前确认", "减少误触造成的意外开启", confirmFrunk) { setConfirm(!confirmFrunk) })
-    body.addView(listRow(R.drawable.ic_palette, "换肤", "", when(skin){"official"->"官方版";"cockpit"->"车机版";else->"功能版"}) { navigate(Page.SKIN) })
+    body.addView(listRow(R.drawable.ic_palette, "换肤", "", when(skin){"official"->"官方版";"cockpit"->"车机版";"classic"->"功能版";"hippo"->"可爱河马";else->"功能版"}) { navigate(Page.SKIN) })
 
     body.addView(sectionLabel("关于"))
     val about = hBox()
@@ -834,6 +851,33 @@ private fun MainActivity.climateControls(): View {
     if (controller.climateError.isNotEmpty()) {
         box.addView(text(controller.climateError, 12f, Pal.danger).apply { margins(top = 10f) })
     }
+    return box
+}
+
+/** Image-relative targets remain on the correct closure after any viewport resize. */
+private fun MainActivity.hippoHero(): View {
+    val box = vBox()
+    box.pad(24f, 8f, 24f, 12f)
+    val mascot = ImageView(this).apply {
+        setImageResource(R.drawable.theme_hippo_mascot)
+        scaleType = ImageView.ScaleType.CENTER_INSIDE
+        contentDescription = "可爱河马蓝牙助手"
+        layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(270f))
+    }
+    box.addView(mascot)
+    box.addView(text(if (isConnected) "河马已经找到车辆啦" else "河马正在等你连接车辆", 16f, Pal.fg, bold = true, align = Gravity.CENTER).apply { margins(top = 4f) })
+    val actions = hBox().apply { margins(top = 16f) }
+    actions.addView(wideButton(if (lockState()) "解锁车辆" else "锁定车辆", "blue", enabled = controlsEnabled) {
+        if (lockState()) onUnlock() else onLock()
+    }.apply { weight(1f) })
+    actions.addView(View(this).apply { layoutParams = LinearLayout.LayoutParams(dp(10f), 1) })
+    actions.addView(wideButton(if (trunkOpen()) "关闭后备箱" else "打开后备箱", "secondary", enabled = controlsEnabled) {
+        onTrunk()
+    }.apply { weight(1f) })
+    box.addView(actions)
+    box.addView(wideButton(if (controller.observation?.frunk in listOf(1, 2)) "关闭前备箱" else "打开前备箱", "light", enabled = controlsEnabled) {
+        onFrunk()
+    }.apply { margins(top = 10f) })
     return box
 }
 
