@@ -1,6 +1,10 @@
 package com.ronnie.teslakey.ui
 
 import android.Manifest
+import android.content.Intent
+import android.net.Uri
+import android.os.Build
+import android.provider.Settings
 import android.content.pm.PackageManager
 import android.os.Bundle
 import android.os.Handler
@@ -13,9 +17,12 @@ import android.widget.LinearLayout
 import android.widget.ScrollView
 import android.widget.TextView
 import com.ronnie.teslakey.R
+import com.ronnie.teslakey.data.UpdateChecker
 import com.ronnie.teslakey.data.VehicleController
 import com.ronnie.teslakey.protocol.TeslaProtocol
 import com.ronnie.teslakey.protocol.VehicleCommand
+import androidx.core.content.FileProvider
+import java.io.File
 
 /**
  * Single-activity UI. Mirrors the HTML prototype: a scrollable screen, a two-tab bottom
@@ -82,6 +89,7 @@ class MainActivity : android.app.Activity() {
         render()
         // Paired vehicles reconnect on their own; no manual connect step after a fresh app start.
         controller.autoConnectIfPaired()
+        checkForUpdate(manual = false)
     }
 
     private fun buildScreen() {
@@ -437,6 +445,72 @@ class MainActivity : android.app.Activity() {
         render()
     }
 
+    // ---- update check (latest.json on the release site) ----------------------
+    /** Runs off the main thread. Silent on startup; manual checks always give feedback. */
+    private fun checkForUpdate(manual: Boolean) {
+        if (manual) toast("正在检查更新…")
+        Thread {
+            val result = UpdateChecker(this).check()
+            runOnUiThread {
+                if (isFinishing) return@runOnUiThread
+                when (result) {
+                    is UpdateChecker.CheckResult.Available -> {
+                        val u = result.update
+                        if (overlay.visibility == View.VISIBLE) closeSheet()
+                        showSheet("发现新版本 ${u.versionName}",
+                            u.notes ?: "建议更新到最新版本。",
+                            "下载并安装",
+                            { closeSheet(); downloadUpdate(u) })
+                    }
+                    UpdateChecker.CheckResult.NoUpdate -> if (manual) toast("已是最新版本")
+                    UpdateChecker.CheckResult.Failed -> if (manual) showUpdateFallback()
+                }
+            }
+        }.start()
+    }
+
+    internal fun onCheckUpdate() = checkForUpdate(manual = true)
+
+    internal fun versionName(): String = try {
+        @Suppress("DEPRECATION") packageManager.getPackageInfo(packageName, 0).versionName ?: ""
+    } catch (_: Exception) { "" }
+
+    /** When the in-app upgrade cannot proceed, send the user to the open-source release page. */
+    private fun showUpdateFallback() = showSheet("检查更新失败",
+        "无法获取或安装新版本。你可以前往开源发布页（GitHub Releases）手动下载最新安装包。",
+        "打开发布页",
+        {
+            closeSheet()
+            startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(RELEASES_URL)))
+        })
+
+    private fun downloadUpdate(update: UpdateChecker.Update) {
+        toast("正在下载更新…")
+        Thread {
+            val apk = UpdateChecker(this).download(update)
+            runOnUiThread {
+                if (isFinishing) return@runOnUiThread
+                if (apk == null) {
+                    toast("更新下载或校验失败，请手动下载")
+                    showUpdateFallback()
+                } else installApk(apk)
+            }
+        }.start()
+    }
+
+    private fun installApk(file: File) {
+        if (Build.VERSION.SDK_INT >= 26 && !packageManager.canRequestPackageInstalls()) {
+            toast("请允许安装未知来源应用后重试")
+            startActivity(Intent(Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES, Uri.parse("package:$packageName")))
+            return
+        }
+        val uri = FileProvider.getUriForFile(this, "$packageName.fileprovider", file)
+        startActivity(Intent(Intent.ACTION_VIEW).apply {
+            setDataAndType(uri, "application/vnd.android.package-archive")
+            addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_ACTIVITY_NEW_TASK)
+        })
+    }
+
     // ---- lifecycle & back ----------------------------------------------------
     override fun onResume() {
         super.onResume()
@@ -466,5 +540,6 @@ class MainActivity : android.app.Activity() {
 
     companion object {
         private const val REQ_BLE = 1001
+        private const val RELEASES_URL = "https://github.com/Ronnie2026/Tesla-BLE-Unlock-Android/releases"
     }
 }

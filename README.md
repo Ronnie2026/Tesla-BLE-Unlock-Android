@@ -49,6 +49,18 @@ adb install -r app/build/outputs/apk/debug/app-debug.apk
 
 APK 位于 `app/build/outputs/apk/debug/app-debug.apk`。
 
+## 检查更新
+
+- 启动时静默检查；「我的 → 检查更新」可手动检查，显示当前版本号。
+- 检查地址：`https://benbenyu.top/apps/tesla-ble/latest.json`（在 `UpdateChecker.CHECK_URL` 修改）。
+  期望字段：`available`、`applicationId`、`versionCode`、`versionName`、`apkUrl`（相对 latest.json）、
+  `sha256`、`size`、可选的 `minSdk`、`notes`。
+- 只有包名一致且远端 `versionCode` 更大才提示；`apkUrl` 必须是同一域名的 HTTPS 地址。
+- 下载后校验文件大小与 SHA-256，失败不安装；下载/校验/更新失败时提示前往
+  [GitHub Releases](https://github.com/Ronnie2026/Tesla-BLE-Unlock-Android/releases) 手动下载。
+- 安装使用 FileProvider + 系统安装器，未知来源权限由系统引导用户开启。
+- 签名说明：当前发布为 debug 签名；如需无缝覆盖升级，应固定同一套 release 签名。
+
 ## 屏幕兼容性测试
 
 `scripts/screen-matrix.sh` 可在本机 Android 模拟器上快速切换常见机型的屏幕规格

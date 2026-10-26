@@ -381,6 +381,7 @@ internal fun MainActivity.meScreen(): View {
     body.addView(listRow(R.drawable.ic_plus_lg, "添加钥匙", "搜索并配对你的车辆") { navigate(Page.ADD) })
     body.addView(listRow(R.drawable.ic_palette, "换肤", "选择适合你的控制方式", when(skin){"official"->"官方版";"cockpit"->"车机版";else->"功能版"}) { navigate(Page.SKIN) })
     body.addView(listRow(R.drawable.ic_key, "帮助", "如何添加钥匙？") { showAddKeyHelp() })
+    body.addView(listRow(R.drawable.ic_download, "检查更新", "当前版本 ${versionName()}") { onCheckUpdate() })
 
     body.addView(text("特斯拉蓝牙钥匙 · 安卓版", 10f, 0xFF68778C.toInt(), align = Gravity.CENTER)
         .apply { matchWidth(); setLineSpacing(dp(4f).toFloat(), 1f); margins(top = 32f) })

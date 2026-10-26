@@ -7,4 +7,4 @@ android {
  kotlinOptions { jvmTarget = '17' }
  buildTypes { release { minifyEnabled false } }
 }
-dependencies { implementation project(':protocol') }
+dependencies { implementation project(':protocol'); implementation 'androidx.core:core-ktx:1.13.1' }
