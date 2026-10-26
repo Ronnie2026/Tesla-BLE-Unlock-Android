@@ -5,7 +5,7 @@ final result: passed
 ## 对照基准
 
 - 用户选择：图 2 深色车机风格。
-- 原始视觉来源：/Users/ronnie_mac/.codex/generated_images/01a16692-146f-7831-aa0a-ae42da3160fc/exec-36568c71-5a70-4fad-84ba-0da9c1f56491.png
+- 原始视觉来源：本地设计参考图（不随项目发布，不依赖个人电脑路径）
 - 归档来源：qa/reference.png（853 × 1844），比对时等比例显示为约 390 × 844。
 - 浏览器实渲染：qa/mobile.png（390 × 844），CSS 视口 390 × 844，deviceScaleFactor 1。
 - 同屏证据：qa/comparison.png，通过 qa/compare.html 将来源与实现并排展示。
