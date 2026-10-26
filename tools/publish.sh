@@ -13,15 +13,22 @@
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
+# 正式签名来源（二选一）：
+#   A. keystore.properties（仓库根目录，不入库）
+#   B. macOS 钥匙串条目 tesla-ble-release-keystore-password / -key-password
 KS=keystore.properties
-if [ ! -f "$KS" ]; then
-  echo "错误：缺少 keystore.properties（正式签名配置）。" >&2
-  echo "请按 README「发布」一节创建；本项目不会用 debug 签名代替正式签名。" >&2
+if [ -f "$KS" ]; then
+  for key in storeFile storePassword keyAlias keyPassword; do
+    grep -qE "^${key}=.+" "$KS" || { echo "错误：keystore.properties 缺少 ${key}" >&2; exit 2; }
+  done
+elif security find-generic-password -a "$USER" -s tesla-ble-release-keystore-password >/dev/null 2>&1 \
+  && security find-generic-password -a "$USER" -s tesla-ble-release-key-password >/dev/null 2>&1; then
+  echo "使用 macOS 钥匙串中的正式签名密码"
+else
+  echo "错误：缺少正式签名配置（keystore.properties 或钥匙串条目）。" >&2
+  echo "本项目不会用 debug 签名代替正式签名。" >&2
   exit 2
 fi
-for key in storeFile storePassword keyAlias keyPassword; do
-  grep -qE "^${key}=.+" "$KS" || { echo "错误：keystore.properties 缺少 ${key}" >&2; exit 2; }
-done
 
 SDK="${ANDROID_HOME:-${ANDROID_SDK_ROOT:-$HOME/Library/Android/sdk}}"
 if [ -z "${JAVA_HOME:-}" ]; then

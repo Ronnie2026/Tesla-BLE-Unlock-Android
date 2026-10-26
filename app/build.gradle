@@ -1,13 +1,23 @@
 plugins { id 'com.android.application'; id 'org.jetbrains.kotlin.android' }
 
-// 正式签名从仓库根目录的 keystore.properties 读取（不入库）；缺失时 release 包不会签名，
-// 发布脚本会明确报错，绝不自动退回 debug 签名。
+// 正式签名优先从 macOS 钥匙串读取密码；也兼容本地 keystore.properties（不入库）。
+// 缺失时 release 包不会签名，绝不自动退回 debug 签名。
+def keychainPassword = { String service ->
+    try {
+        def p = ['security', 'find-generic-password', '-a', System.getProperty('user.name'), '-s', service, '-w'].execute()
+        def value = p.text.trim()
+        p.waitFor()
+        return p.exitValue() == 0 && value ? value : null
+    } catch (Exception ignored) { return null }
+}
 def keystorePropsFile = rootProject.file('keystore.properties')
 def keystoreProps = new Properties()
 if (keystorePropsFile.exists()) {
     keystoreProps.load(new FileInputStream(keystorePropsFile))
 }
-def hasReleaseKeystore = keystoreProps.getProperty('storeFile')?.trim()
+def keychainStorePassword = keychainPassword('tesla-ble-release-keystore-password')
+def keychainKeyPassword = keychainPassword('tesla-ble-release-key-password')
+def hasReleaseKeystore = (keystoreProps.getProperty('storeFile') ?: new File(System.getProperty('user.home'), 'AndroidSigning/tesla-ble-release.jks').path).trim()
 
 android {
  namespace 'com.ronnie.teslakey'
@@ -18,10 +28,10 @@ android {
  signingConfigs {
   if (hasReleaseKeystore) {
    release {
-    storeFile file(keystoreProps.getProperty('storeFile'))
-    storePassword keystoreProps.getProperty('storePassword')
-    keyAlias keystoreProps.getProperty('keyAlias')
-    keyPassword keystoreProps.getProperty('keyPassword')
+    storeFile file(hasReleaseKeystore)
+    storePassword(keychainStorePassword ?: keystoreProps.getProperty('storePassword'))
+    keyAlias(keystoreProps.getProperty('keyAlias') ?: 'tesla_ble_release')
+    keyPassword(keychainKeyPassword ?: keystoreProps.getProperty('keyPassword'))
    }
   }
  }
