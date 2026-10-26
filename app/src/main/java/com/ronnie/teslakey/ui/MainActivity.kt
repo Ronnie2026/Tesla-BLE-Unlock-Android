@@ -89,7 +89,7 @@ class MainActivity : android.app.Activity() {
         render()
         // Paired vehicles reconnect on their own; no manual connect step after a fresh app start.
         controller.autoConnectIfPaired()
-        checkForUpdate(manual = false)
+        maybeAutoCheckUpdates()
     }
 
     private fun buildScreen() {
@@ -446,64 +446,141 @@ class MainActivity : android.app.Activity() {
     }
 
     // ---- update check (latest.json on the release site) ----------------------
-    /** Runs off the main thread. Silent on startup; manual checks always give feedback. */
-    private fun checkForUpdate(manual: Boolean) {
-        if (manual) toast("正在检查更新…")
-        Thread {
-            val result = UpdateChecker(this).check()
-            runOnUiThread {
-                if (isFinishing) return@runOnUiThread
-                when (result) {
-                    is UpdateChecker.CheckResult.Available -> {
-                        val u = result.update
-                        if (overlay.visibility == View.VISIBLE) closeSheet()
-                        showSheet("发现新版本 ${u.versionName}",
-                            u.notes ?: "建议更新到最新版本。",
-                            "下载并安装",
-                            { closeSheet(); downloadUpdate(u) })
-                    }
-                    UpdateChecker.CheckResult.NoUpdate -> if (manual) toast("已是最新版本")
-                    UpdateChecker.CheckResult.Failed -> if (manual) showUpdateFallback()
-                }
-            }
-        }.start()
+    private var updateChecking = false
+    private var updateDownloading = false
+    @Volatile private var updateCancelled = false
+    private var pendingInstall: File? = null
+    private var updateBar: android.widget.ProgressBar? = null
+    private var updatePercent: TextView? = null
+
+    /** Automatic check: at most once per 12h per install, and once per process. */
+    private fun maybeAutoCheckUpdates() {
+        val prefs = getSharedPreferences("ui", MODE_PRIVATE)
+        val last = prefs.getLong("lastUpdateCheck", 0L)
+        if (System.currentTimeMillis() - last < 12L * 60 * 60 * 1000) return
+        prefs.edit().putLong("lastUpdateCheck", System.currentTimeMillis()).apply()
+        maybeAutoCheckUpdates()
     }
 
+    /** Manual check from "我的 → 检查更新". */
     internal fun onCheckUpdate() = checkForUpdate(manual = true)
 
     internal fun versionName(): String = try {
         @Suppress("DEPRECATION") packageManager.getPackageInfo(packageName, 0).versionName ?: ""
     } catch (_: Exception) { "" }
 
+    /** Runs off the main thread; failures are silent for automatic checks and explained for manual ones. */
+    private fun checkForUpdate(manual: Boolean) {
+        if (updateChecking || updateDownloading) return
+        updateChecking = true
+        if (manual) toast("正在检查更新…")
+        Thread {
+            val result = UpdateChecker(this).check()
+            runOnUiThread {
+                updateChecking = false
+                if (isFinishing) return@runOnUiThread
+                when (result) {
+                    is UpdateChecker.CheckResult.Available -> {
+                        if (overlay.visibility == View.VISIBLE) closeSheet()
+                        showUpdatePrompt(result.update)
+                    }
+                    UpdateChecker.CheckResult.NoUpdate -> if (manual) toast("已是最新版本")
+                    UpdateChecker.CheckResult.Failed -> if (manual) showUpdateFallback("无法获取新版本信息")
+                }
+            }
+        }.start()
+    }
+
+    private fun showUpdatePrompt(u: UpdateChecker.Update) {
+        val size = u.sizeBytes?.let { "%.1f MB".format(it / 1024f / 1024f) } ?: "未知"
+        val date = u.publishedAt ?: "未知"
+        val log = if (u.notes.isEmpty()) "" else "\n\n更新内容：\n" + u.notes.joinToString("\n") { "· $it" }
+        val body = "新版本 ${u.versionName}\n发布日期：$date\n文件大小：$size" + log
+        showSheet("发现新版本 ${u.versionName}", body, "立即更新",
+            { closeSheet(); startUpdateDownload(u) },
+            cancelLabel = "稍后")
+    }
+
     /** When the in-app upgrade cannot proceed, send the user to the open-source release page. */
-    private fun showUpdateFallback() = showSheet("检查更新失败",
-        "无法获取或安装新版本。你可以前往开源发布页（GitHub Releases）手动下载最新安装包。",
+    private fun showUpdateFallback(reason: String) = showSheet("检查更新失败",
+        "$reason。你可以前往开源发布页（GitHub Releases）手动下载最新安装包。",
         "打开发布页",
         {
             closeSheet()
             startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(RELEASES_URL)))
         })
 
-    private fun downloadUpdate(update: UpdateChecker.Update) {
-        toast("正在下载更新…")
+    private fun startUpdateDownload(u: UpdateChecker.Update) {
+        if (updateDownloading) return
+        updateDownloading = true
+        updateCancelled = false
+        showUpdateProgress(u.versionName)
         Thread {
-            val apk = UpdateChecker(this).download(update)
+            val checker = UpdateChecker(this)
+            val apk = checker.download(u, { updateCancelled || isFinishing }, { done, total ->
+                runOnUiThread { updateProgress(done, total) }
+            })
+            val verified = apk != null && checker.verifyApk(apk, u)
             runOnUiThread {
-                if (isFinishing) return@runOnUiThread
-                if (apk == null) {
-                    toast("更新下载或校验失败，请手动下载")
-                    showUpdateFallback()
-                } else installApk(apk)
+                updateDownloading = false
+                closeSheet()
+                when {
+                    isFinishing -> apk?.delete()
+                    updateCancelled -> toast("已取消下载")
+                    apk == null -> showUpdateFallback("更新下载或校验失败")
+                    !verified -> showUpdateFallback("安装包校验未通过（版本或签名不匹配）")
+                    else -> installApk(apk)
+                }
             }
         }.start()
     }
 
+    private fun showUpdateProgress(versionName: String) {
+        overlay.removeAllViews()
+        val cover = View(this).apply {
+            setBackgroundColor(Pal.dim)
+            layoutParams = FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT)
+        }
+        overlay.addView(cover)
+        val card = vBox()
+        card.background = topRound(24f, Pal.sheetBg)
+        card.layoutParams = FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT, Gravity.BOTTOM)
+        card.pad(24f, 24f, 24f, 24f)
+        card.addView(text("正在下载 $versionName", 20f, Pal.fg, bold = true))
+        val bar = android.widget.ProgressBar(this, null, android.R.attr.progressBarStyleHorizontal)
+        bar.max = 1000
+        bar.progress = 0
+        card.addView(bar, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { topMargin = dp(16f) })
+        val pct = text("0%", 13f, Pal.muted)
+        card.addView(pct.apply { margins(top = 8f) })
+        card.addView(wideButton("取消下载", "secondary") {
+            updateCancelled = true
+            closeSheet()
+        }.apply { margins(top = 16f) })
+        overlay.addView(card)
+        overlay.visibility = View.VISIBLE
+        updateBar = bar
+        updatePercent = pct
+    }
+
+    private fun updateProgress(done: Long, total: Long) {
+        if (updateCancelled) return
+        if (total > 0) {
+            updateBar?.progress = (done * 1000 / total).toInt()
+            updatePercent?.text = "%d%%  %.1f/%.1f MB".format(done * 100 / total, done / 1048576f, total / 1048576f)
+        } else {
+            updatePercent?.text = "%.1f MB".format(done / 1048576f)
+        }
+    }
+
     private fun installApk(file: File) {
         if (Build.VERSION.SDK_INT >= 26 && !packageManager.canRequestPackageInstalls()) {
-            toast("请允许安装未知来源应用后重试")
+            pendingInstall = file
+            toast("请允许安装未知来源应用，返回后将自动继续")
             startActivity(Intent(Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES, Uri.parse("package:$packageName")))
             return
         }
+        pendingInstall = null
         val uri = FileProvider.getUriForFile(this, "$packageName.fileprovider", file)
         startActivity(Intent(Intent.ACTION_VIEW).apply {
             setDataAndType(uri, "application/vnd.android.package-archive")
@@ -516,6 +593,9 @@ class MainActivity : android.app.Activity() {
         super.onResume()
         controller.foreground()
         render()
+        pendingInstall?.let { file ->
+            if (Build.VERSION.SDK_INT < 26 || packageManager.canRequestPackageInstalls()) installApk(file)
+        }
     }
 
     override fun onPause() {
@@ -524,6 +604,7 @@ class MainActivity : android.app.Activity() {
     }
 
     override fun onDestroy() {
+        updateCancelled = true
         super.onDestroy()
         controller.close()
     }
