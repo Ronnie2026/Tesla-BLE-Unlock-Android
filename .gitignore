@@ -12,3 +12,4 @@ docs/qa/
 protocol/bin/
 __pycache__/
 .claude/
+dist/

@@ -1,6 +1,8 @@
 # Tesla BLE Unlock Android
 
-特斯拉蓝牙钥匙 · 安卓版。当前版本 **0.1.12**，Android 12（API 31）及以上。
+特斯拉蓝牙钥匙 · 安卓版。当前版本 **20261026**（2026-10-26 构建），Android 12（API 31）及以上。
+
+最新安装包：[GitHub Releases](https://github.com/Ronnie2026/Tesla-BLE-Unlock-Android/releases)（`Tesla_BLE_Android_Unlock_20261026.apk`，debug 签名，仅供个人测试；版本号按构建日期命名）。
 
 > **实测环境**：特斯拉 **Model Y 2025 焕新版 标准续航版**（中国产，VIN `LRW` 开头）+
 > **努比亚豆包手机二代**（NX888J，Android 16）。其他车型、年款、固件及手机均**未验证**，
