@@ -22,6 +22,7 @@ object Pal {
     val muted = 0xFF929BA9.toInt()
     val line = 0xFF2B333F.toInt()
     val blue = 0xFF4A9CFF.toInt()
+    val amber = 0xFFF5A623.toInt()
     val fg = 0xFFF3F6FD.toInt()
     val subFg = 0xFF9AA5B5.toInt()
 

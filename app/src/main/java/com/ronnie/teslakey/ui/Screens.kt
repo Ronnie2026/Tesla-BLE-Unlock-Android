@@ -44,13 +44,29 @@ internal fun MainActivity.header(title: String, subtitle: String = "", back: Boo
             bar.addView(vBox(matchWidth = false).apply {
                 layoutParams = LinearLayout.LayoutParams(dp(72f), dp(56f))
                 gravity = Gravity.CENTER
-                val color = if (isConnected) Pal.blue else Pal.muted
+                // Live connection state: 已连接 / 连接中 / 已断开 / 未连接.
+                val connecting = !isConnected && (controller.scanning || controller.busy)
+                val label = when {
+                    isConnected -> "已连接"
+                    connecting -> "连接中"
+                    hasKey -> "已断开"
+                    else -> "未连接"
+                }
+                val color = when {
+                    isConnected -> Pal.blue
+                    connecting -> Pal.amber
+                    else -> Pal.muted
+                }
                 addView(icon(R.drawable.ic_bluetooth, 25, color))
-                addView(text(if (isConnected) "已连接" else "未连接", 11f, color).apply {
+                addView(text(label, 11f, color).apply {
                     layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT)
                 })
-                background = clickableBg(12f, if (isConnected) Pal.badgeBlueBg else Color.TRANSPARENT)
-                contentDescription = if (isConnected) "蓝牙已连接" else "蓝牙未连接，点击连接车辆"
+                background = clickableBg(12f, when {
+                    isConnected -> Pal.badgeBlueBg
+                    connecting -> 0x1FF5A623
+                    else -> Color.TRANSPARENT
+                })
+                contentDescription = "蓝牙$label，点击管理连接"
                 setOnClickListener { onConnectionTap() }
             })
         }
