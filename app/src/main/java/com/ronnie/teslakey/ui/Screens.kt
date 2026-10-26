@@ -16,6 +16,7 @@ import android.widget.LinearLayout
 import android.widget.TextView
 import com.ronnie.teslakey.protocol.VehicleCommand
 import com.ronnie.teslakey.protocol.TeslaProtocol
+import com.ronnie.teslakey.protocol.VehicleObservation
 import com.ronnie.teslakey.R
 import com.ronnie.teslakey.ble.TeslaBle
 import com.ronnie.teslakey.ui.MainActivity.Page
@@ -171,11 +172,13 @@ internal fun MainActivity.carScreen(): View {
         else if (controller.busy) root.addView(text(controller.status, 12f, Pal.muted).apply { pad(25f, 4f, 25f, 12f) })
         return root
     }
+    val small = resources.displayMetrics.heightPixels < 1600
     root.addView(header("我的 Model Y", "特斯拉蓝牙钥匙"))
-    root.addView(hero())
+    if (small) root.addView(compactControls()) else root.addView(hero())
     root.addView(statusRow())
 
     if (skin == "classic") root.addView(classicGrid())
+    else if (small) root.addView(hint(if (isConnected) "点击按钮进行控制" else "连接车辆后可使用控制功能"))
     else {
         root.addView(cockpitActions())
         root.addView(hint(if (isConnected) "点击车身标记进行操作" else "连接车辆后可使用控制功能"))
@@ -265,6 +268,44 @@ private fun MainActivity.cockpitActions(): View {
     row.addView(View(this).apply { layoutParams = LinearLayout.LayoutParams(dp(10f), 1) })
     row.addView(lock)
     return row
+}
+
+/** Short-screen layout: the car image wastes space, so closures and lock become compact tiles. */
+private fun MainActivity.compactControls(): View {
+    val row = hBox()
+    row.layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT)
+    row.margins(left = 25f, top = 4f, right = 25f, bottom = 4f)
+    val obs = if (isConnected) controller.observation else null
+    fun gap() = View(this).apply { layoutParams = LinearLayout.LayoutParams(dp(10f), 1) }
+    val frunk = compactTile("前备箱", if (isConnected) VehicleObservation.closureLabel(obs?.frunk) else "未连接", R.drawable.ic_frunk) { onFrunk() }
+    val lockText = when (obs?.lock) { 0 -> "锁车"; 1, 2, 3 -> "解锁"; else -> "车锁" }
+    val lockState = if (isConnected) VehicleObservation.lockLabel(obs?.lock) else "未连接"
+    val lock = compactTile(lockText, lockState, if (obs?.lock == 0) R.drawable.ic_unlock else R.drawable.ic_lock) {
+        if (obs?.lock == 0) onLock() else if (obs?.lock in listOf(1, 2, 3)) onUnlock() else toast("车锁状态尚未确认，请稍后再操作")
+    }
+    val trunk = compactTile(if (trunkOpen()) "关闭后备箱" else "打开后备箱",
+        if (isConnected) VehicleObservation.closureLabel(obs?.trunk) else "未连接", R.drawable.ic_trunk) { onTrunk() }
+    row.addView(frunk.apply { weight(1f) })
+    row.addView(gap())
+    row.addView(lock.apply { weight(1f) })
+    row.addView(gap())
+    row.addView(trunk.apply { weight(1f) })
+    return row
+}
+
+private fun MainActivity.compactTile(title: String, state: String, iconRes: Int, onClick: () -> Unit): View {
+    val box = vBox()
+    box.layoutParams = LinearLayout.LayoutParams(0, dp(76f))
+    box.gravity = Gravity.CENTER
+    box.background = clickableBg(14f, Pal.gridBg, 1f, Pal.gridBorder)
+    box.addView(icon(iconRes, 20, Pal.fg))
+    box.addView(text(title, 13f, Pal.fg, bold = true, align = Gravity.CENTER).apply { margins(top = 4f) })
+    box.addView(text(state, 10f, Pal.muted, align = Gravity.CENTER))
+    box.alpha = if (controlsEnabled) 1f else 0.4f
+    box.isEnabled = controlsEnabled
+    box.isClickable = controlsEnabled
+    if (controlsEnabled) box.setOnClickListener { onClick() }
+    return box
 }
 
 private fun MainActivity.actionButton(label: String, iconRes: Int, primary: Boolean, onClick: () -> Unit): View {
