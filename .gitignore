@@ -13,3 +13,5 @@ protocol/bin/
 __pycache__/
 .claude/
 dist/
+keystore.properties
+publish/

@@ -51,15 +51,50 @@ APK 位于 `app/build/outputs/apk/debug/app-debug.apk`。
 
 ## 检查更新
 
-- 启动时静默检查；「我的 → 检查更新」可手动检查，显示当前版本号。
-- 检查地址：`https://benbenyu.top/apps/tesla-ble/latest.json`（在 `UpdateChecker.CHECK_URL` 修改）。
-  期望字段：`available`、`applicationId`、`versionCode`、`versionName`、`apkUrl`（相对 latest.json）、
-  `sha256`、`size`、可选的 `minSdk`、`notes`。
-- 只有包名一致且远端 `versionCode` 更大才提示；`apkUrl` 必须是同一域名的 HTTPS 地址。
-- 下载后校验文件大小与 SHA-256，失败不安装；下载/校验/更新失败时提示前往
-  [GitHub Releases](https://github.com/Ronnie2026/Tesla-BLE-Unlock-Android/releases) 手动下载。
-- 安装使用 FileProvider + 系统安装器，未知来源权限由系统引导用户开启。
-- 签名说明：当前发布为 debug 签名；如需无缝覆盖升级，应固定同一套 release 签名。
+- 启动后自动检查（每 12 小时最多一次）；「我的 → 检查更新」可手动检查，并显示当前版本号。
+- 检查地址：`https://benbenyu.top/apps/tesla-ble/latest.json`（见 `UpdateChecker.CHECK_URL`）。
+  字段：`available`、`applicationId`、`versionCode`、`versionName`、`apkUrl`（相对 latest.json）、
+  `sha256`、`sizeBytes`、`publishedAt`、`minAndroid`、`minSdk`（可选）、`notes[]`、`releaseNotes`。
+- 仅当 `available=true`、包名一致且远端 `versionCode` **整数**大于本地版本时提示，
+  弹窗显示版本号、发布日期、文件大小和更新日志，提供「立即更新 / 稍后」。
+- 网络请求与下载只允许 HTTPS 且域名为 `benbenyu.top`（每一跳重定向都校验），证书异常时直接失败，
+  不做降级或绕过；失败只在手动检查时提示，不影响车辆控制功能。
+- 下载显示进度并可取消；校验文件大小、SHA-256、APK 包名/版本，以及签名证书与已安装版本一致，
+  任一不符都禁止安装。
+- 安装走 FileProvider + 系统安装器，由用户确认；引导未知来源授权后返回会自动继续安装。
+- 更新服务只读取版本信息并下载安装包，不上传任何车辆、密钥或个人数据。
+- 签名说明：正式包必须使用固定 release 签名；跨签名（如 debug → release）无法覆盖安装，需先卸载旧包。
+
+## 发布（正式签名）
+
+1. 生成正式签名（仅一次，密钥不入库）：
+   ```sh
+   keytool -genkeypair -v -keystore ~/keystore/tesla-release.jks -alias tesla \
+     -keyalg RSA -keysize 2048 -validity 10000
+   ```
+2. 在仓库根目录创建 `keystore.properties`（已在 .gitignore 中）：
+   ```properties
+   storeFile=/Users/you/keystore/tesla-release.jks
+   storePassword=...
+   keyAlias=tesla
+   keyPassword=...
+   ```
+3. 一条命令构建并生成待上传产物：
+   ```sh
+   tools/publish.sh --note "本次更新内容一" --note "本次更新内容二"
+   # 或：tools/publish.sh --notes-file publish-notes.txt
+   ```
+   脚本会执行协议测试与 `assembleRelease`，校验 APK 必须是正式签名（发现 debug 签名直接报错），
+   读取真实包名/版本/最低系统版本，计算 SHA-256 与大小，输出：
+   ```
+   publish/
+   ├── latest.json          最新记录本身
+   ├── releases.json        {"releases": [最新, 历史...]}
+   └── releases/tesla-ble-<versionName>-<versionCode>.apk
+   ```
+   发布日志只来自 `--note/--notes-file`，不编造历史；已存在的 versionCode/文件名会被拒绝覆盖。
+4. 将 `publish/` 内文件按站点发布流程上传（APK 先传临时名再改名，验证公网 SHA-256 后
+   更新 releases.json，最后更新 latest.json）。
 
 ## 屏幕兼容性测试
 

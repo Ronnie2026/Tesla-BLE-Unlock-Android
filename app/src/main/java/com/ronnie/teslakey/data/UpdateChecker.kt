@@ -173,17 +173,19 @@ class UpdateChecker(private val context: Context) {
     }
 
     /** The downloaded APK must be this app, the announced version, and share our signing certificate. */
-    fun verifyApk(file: File, update: Update): Boolean = try {
-        val pm = context.packageManager
-        val flags = PackageManager.GET_SIGNING_CERTIFICATES
-        val archive = pm.getPackageArchiveInfo(file.absolutePath, flags) ?: return false
-        if (archive.packageName != context.packageName) return false
-        if (PackageInfoCompat.getLongVersionCode(archive) != update.versionCode.toLong()) return false
-        val remoteSigners = archive.signingInfo?.apkContentsSigners ?: return false
-        val localSigners = pm.getPackageInfo(context.packageName, flags).signingInfo?.apkContentsSigners
-            ?: return false
-        remoteSigners.any { r -> localSigners.any { l -> r.toByteArray().contentEquals(l.toByteArray()) } }
-    } catch (_: Exception) {
-        false
+    fun verifyApk(file: File, update: Update): Boolean {
+        return try {
+            val pm = context.packageManager
+            val flags = PackageManager.GET_SIGNING_CERTIFICATES
+            val archive = pm.getPackageArchiveInfo(file.absolutePath, flags) ?: return false
+            if (archive.packageName != context.packageName) return false
+            if (PackageInfoCompat.getLongVersionCode(archive) != update.versionCode.toLong()) return false
+            val remoteSigners = archive.signingInfo?.apkContentsSigners ?: return false
+            val localSigners = pm.getPackageInfo(context.packageName, flags).signingInfo?.apkContentsSigners
+                ?: return false
+            remoteSigners.any { r -> localSigners.any { l -> r.toByteArray().contentEquals(l.toByteArray()) } }
+        } catch (_: Exception) {
+            false
+        }
     }
 }
