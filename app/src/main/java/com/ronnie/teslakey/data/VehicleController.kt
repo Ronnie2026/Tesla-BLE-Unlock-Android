@@ -40,11 +40,22 @@ class VehicleController(context:Context) {
  private var sequence=0
  private var wasBackground=false
  private var reconnecting=false
+ private var retryConnect=false
+ private var inForeground=true
+ private var statusTimeouts=0
  private val refresh = Runnable {
   if(canControl) {
    if(climateError.isEmpty()&&android.os.SystemClock.elapsedRealtime()-lastClimatePoll>=10000) command(VehicleCommand.CLIMATE_STATUS)
-   else command(VehicleCommand.STATUS)
+   else pollStatus()
   }
+ }
+ /** Background status poll: keeps the link alive without toggling busy/status, so the UI does not re-render. */
+ private fun pollStatus(){
+  if(!canControl||pending!=null)return
+  handler.removeCallbacks(refresh)
+  pending=VehicleCommand.STATUS
+  try{ble.send(TeslaProtocol.plainStatusRequest(session?.route?:vcsecRoute));deadline(8000,"")}
+  catch(e:Exception){pending=null;log.event("status.error",e.message?:"状态请求未能发送");scheduleRefresh()}
  }
  private fun scheduleRefresh(){
   handler.removeCallbacks(refresh)
@@ -60,7 +71,9 @@ class VehicleController(context:Context) {
     error=if(devices.isEmpty())"30 秒内未收到任何附近设备广播。请确认附近设备权限已允许，保持 App 在前台，靠近并唤醒车辆后重试。"
      else "已收到 ${devices.size} 个附近设备广播，但未匹配到此 VIN 的车辆。请核对 VIN，靠近并唤醒车辆后重试。"
    }
-   status=if(found.isEmpty())"未找到车辆" else "请选择车辆";onChange()}
+   status=if(found.isEmpty())"未找到车辆" else "请选择车辆";onChange()
+   // Auto-reconnect keeps trying while the app is in the foreground; the car may have been asleep.
+   if(retryConnect&&!connected&&paired&&inForeground)handler.postDelayed({autoConnectIfPaired()},15000) else retryConnect=false}
   ble.onDiagnostic={f->if(diagnosticFound.none{it.device.address==f.device.address}){diagnosticFound.add(f);onChange()}}
   ble.onDiagnosticEnd={diagnosing=false;onChange()}
   ble.onError={fail(it)}
@@ -84,8 +97,15 @@ class VehicleController(context:Context) {
    status="正在读取车辆状态";try{ble.send(TeslaProtocol.plainStatusRequest(session?.route?:vcsecRoute));deadline(8000,"读取车辆状态超时，请靠近车辆重试")}catch(e:Exception){fail(e.message?:"状态请求未能发送")};onChange();return}
   status="正在等待车辆响应";try{ble.send(session!!.command(cmd));deadline(12000,"未收到确认，执行结果未知。请检查车辆实际状态后再操作。") }catch(e:Exception){fail(e.message?:"命令未能发送")};onChange()
  }
- private fun deadline(ms:Long,message:String){val s=++sequence;handler.postDelayed({if(sequence==s&&busy){log.event("operation.timeout",message);
-   if(waitingClimateHello||pending?.domain==3){climateFailure("空调连接或响应超时，执行结果未知。请唤醒车辆后重试。");return@postDelayed};pending=null;waitingHello=false;busy=false;session=null;resetClimate();connected=false;observation=null;error=message;status="请重新验证钥匙";onChange()}},ms)}
+ private fun deadline(ms:Long,message:String){val s=++sequence;handler.postDelayed({if(sequence==s&&(busy||pending!=null)){log.event("operation.timeout",message);
+   if(waitingClimateHello||pending?.domain==3){climateFailure("空调连接或响应超时，执行结果未知。请唤醒车辆后重试。");return@postDelayed}
+   // A missed status reply is not a session failure: keep the link and retry, unless it keeps happening.
+   if(pending==VehicleCommand.STATUS){
+    pending=null;busy=false
+    if(++statusTimeouts>=3){statusTimeouts=0;fail("与车辆的通信中断，正在重新连接")}
+    else{error="状态读取超时，稍后自动重试";status="蓝牙已连接";scheduleRefresh();onChange()}
+    return@postDelayed}
+   pending=null;waitingHello=false;busy=false;session=null;resetClimate();connected=false;observation=null;error=message;status="请重新验证钥匙";onChange()}},ms)}
  private fun receive(m:ByteArray){
   if(waitingClimateHello){
    val active=climateSession?:return
@@ -136,7 +156,7 @@ class VehicleController(context:Context) {
    }
    val obs=VehicleReply.observation(plain);val result=VehicleReply.commandStatus(plain);log.event("command.reply","command=$cmd result=$result observation=$obs")
    if(result==2){fail("车辆拒绝了此操作，请检查权限及车辆状态");return}
-   if(obs!=null){observation=obs;complete();if(cmd!=VehicleCommand.STATUS)onNotice("已收到车辆状态，请核对实际状态");return}
+   if(obs!=null){observation=obs;statusTimeouts=0;if(error.startsWith("状态读取超时"))error="";complete();if(cmd!=VehicleCommand.STATUS)onNotice("已收到车辆状态，请核对实际状态");return}
    if(result==0){complete();if(cmd!=VehicleCommand.STATUS){onNotice("车辆已确认命令，正在读取状态");handler.postDelayed({if(canControl)command(VehicleCommand.STATUS)},300)}}
   }catch(e:Exception){fail(e.message?:"无法认证车辆响应，未确认执行结果")}
  }
@@ -164,15 +184,18 @@ class VehicleController(context:Context) {
  }
  private fun complete(){sequence++;pending=null;busy=false;status="蓝牙已连接";error="";scheduleRefresh();onChange()}
  private fun fail(message:String){handler.removeCallbacks(refresh);reconnecting=false;log.event("controller.error",message);sequence++;busy=false;scanning=false;diagnosing=false;waitingHello=false;pending=null;session=null;resetClimate();connected=false;observation=null;error=message;status="连接或验证未完成";ble.disconnect();onChange()}
- fun disconnect(){handler.removeCallbacks(refresh);reconnecting=false;sequence++;ble.disconnect();session=null;resetClimate();connected=false;busy=false;scanning=false;diagnosing=false;waitingHello=false;pending=null;pairing=false;observation=null;status="未连接";error=""}
+ fun disconnect(){handler.removeCallbacks(refresh);reconnecting=false;retryConnect=false;sequence++;ble.disconnect();session=null;resetClimate();connected=false;busy=false;scanning=false;diagnosing=false;waitingHello=false;pending=null;pairing=false;observation=null;status="未连接";error=""}
  fun forget(){disconnect();keys.forget();vin="";paired=false;onChange()}
- fun background(){log.event("app.background");wasBackground=(connected||ble.ready||scanning||busy);disconnect()}
- fun foreground(){log.event("app.foreground");if(wasBackground){wasBackground=false;if(paired&&TeslaProtocol.validVin(vin)){val savedVin=vin;scan(savedVin);reconnecting=scanning;status=if(scanning)"正在重新连接车辆" else status}else status="已暂停连接，请重新连接车辆"};onChange()}
- /** Called when the app process starts fresh: silently reconnect to a paired vehicle. */
+ fun background(){log.event("app.background");inForeground=false;wasBackground=(connected||ble.ready||scanning||busy);disconnect()}
+ fun foreground(){log.event("app.foreground");inForeground=true;wasBackground=false;
+  if(paired&&TeslaProtocol.validVin(vin)){if(!connected&&!scanning&&!busy)autoConnectIfPaired()}
+  else if(!paired)status="已暂停连接，请重新连接车辆";onChange()}
+ /** Silently reconnect to a paired vehicle; retries while the app is in the foreground. */
  fun autoConnectIfPaired(){
   if(!paired||!TeslaProtocol.validVin(vin))return
+  if(connected||scanning||busy||!inForeground)return
   if(!ble.permitted()||!ble.enabled){status="未连接";return}
-  log.event("auto.connect");val savedVin=vin;scan(savedVin);reconnecting=scanning;status=if(scanning)"正在重新连接车辆" else status;onChange()
+  log.event("auto.connect");val savedVin=vin;scan(savedVin);retryConnect=true;reconnecting=scanning;status=if(scanning)"正在重新连接车辆" else status;onChange()
  }
  fun close(){disconnect();onChange={};onNotice={}}
 }
