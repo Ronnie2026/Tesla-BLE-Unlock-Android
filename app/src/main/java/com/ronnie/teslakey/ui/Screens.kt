@@ -194,7 +194,9 @@ internal fun MainActivity.carScreen(): View {
 
 private fun MainActivity.hero(): View {
     val h = resources.displayMetrics.heightPixels
-    val heroHeight = (if (skin == "classic") h * 0.32f else h * 0.44f).toInt()
+    // Short screens (e.g. 480x854, ZTE Changxiang F60 class) need a smaller hero so controls stay reachable.
+    val small = h < 1600
+    val heroHeight = (when { small -> h * 0.26f; skin == "classic" -> h * 0.32f; else -> h * 0.44f }).toInt()
     val hero = frame()
     hero.layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, heroHeight)
     hero.margins(left = 24f, right = 24f)
@@ -791,7 +793,7 @@ private fun MainActivity.climateControls(): View {
 private fun MainActivity.officialHero(): View {
     val hero = FrameLayout(this).apply {
         layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT,
-            (resources.displayMetrics.heightPixels * 0.66f).toInt())
+            (resources.displayMetrics.heightPixels * (if (resources.displayMetrics.heightPixels < 1600) 0.50f else 0.66f)).toInt())
     }
     val artwork = getDrawable(R.drawable.car_official)!!
     hero.addView(ImageView(this).apply {

@@ -47,6 +47,21 @@ adb install -r app/build/outputs/apk/debug/app-debug.apk
 
 APK 位于 `app/build/outputs/apk/debug/app-debug.apk`。
 
+## 屏幕兼容性测试
+
+`scripts/screen-matrix.sh` 可在本机 Android 模拟器上快速切换常见机型的屏幕规格
+（需要已安装 emulator 与系统镜像）：
+
+```sh
+scripts/screen-matrix.sh list                 # 列出已建机型
+scripts/screen-matrix.sh start small          # 480x854 小屏（中兴畅享 F60 类）
+scripts/screen-matrix.sh start pixel7         # 1080x2400
+scripts/screen-matrix.sh start s23u           # 1440x3088
+```
+
+已建规格：small 480x854 / hd 720x1600 / fhd 1080x2400 / xl 1080x2400(dpi390) /
+pixel7 / pixel4a / nexus5 / redmi / s23u。小屏下车辆页可纵向滚动，控制按钮完整可用。
+
 ## 添加钥匙
 
 坐进车辆并准备已有实体钥匙卡 → App 自动生成本机密钥 → 输入 VIN 搜索连接 → App 提交添加请求 → 按车型要求刷实体卡 → 车机确认后回 App 验证。
