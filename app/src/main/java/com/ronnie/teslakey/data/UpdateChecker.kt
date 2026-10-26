@@ -1,6 +1,7 @@
 package com.ronnie.teslakey.data
 
 import android.content.Context
+import android.util.Log
 import android.content.pm.PackageManager
 import android.os.Build
 import androidx.core.content.pm.PackageInfoCompat
@@ -55,6 +56,7 @@ class UpdateChecker(private val context: Context) {
         private const val TRUSTED_HOST = "benbenyu.top"
         private const val MAX_REDIRECTS = 5
         private const val CONNECT_TIMEOUT_MS = 8000
+        const val TAG = "UpdateFlow"
         private const val READ_TIMEOUT_MS = 10000
     }
 
@@ -62,17 +64,20 @@ class UpdateChecker(private val context: Context) {
     fun check(): CheckResult {
         for (url in CHECK_URLS) {
             try {
+                Log.i(TAG, "check: GET $url")
                 val body = openStream(URL(url)).use { it.readBytes().toString(Charsets.UTF_8) }
-                val result = parse(body)
+                Log.i(TAG, "check: body ${body.length} chars")
+                val result = parse(body, url)
+                Log.i(TAG, "check: result=$result")
                 if (result != CheckResult.Failed) return result
-            } catch (_: Exception) {
-                // Try the next scheme.
+            } catch (e: Exception) {
+                Log.w(TAG, "check failed for $url: ${e.message}")
             }
         }
         return CheckResult.Failed
     }
 
-    fun parse(body: String): CheckResult = try {
+    fun parse(body: String, baseUrl: String = CHECK_URL): CheckResult = try {
         val o = JSONObject(body)
         val available = o.optBoolean("available", false)
         val sameApp = o.optString("applicationId") == context.packageName
@@ -82,7 +87,7 @@ class UpdateChecker(private val context: Context) {
             val code = o.optInt("versionCode", 0)
             val minSdk = if (o.has("minSdk")) o.optInt("minSdk") else null
             val compatible = minSdk == null || Build.VERSION.SDK_INT >= minSdk
-            val resolved = resolveApkUrl(o.optString("apkUrl"))
+            val resolved = resolveApkUrl(o.optString("apkUrl"), baseUrl)
             val sha = o.optString("sha256").lowercase()
             when {
                 code.toLong() <= localCode || !compatible -> CheckResult.NoUpdate
@@ -113,10 +118,10 @@ class UpdateChecker(private val context: Context) {
         return o.optString("releaseNotes").split('\n').map { it.trim() }.filter { it.isNotEmpty() }
     }
 
-    /** apkUrl is relative to latest.json and must stay on the trusted host (http or https). */
-    private fun resolveApkUrl(raw: String): String? {
+    /** apkUrl is relative to the manifest that served it and must stay on the trusted host. */
+    private fun resolveApkUrl(raw: String, baseUrl: String): String? {
         if (raw.isEmpty()) return null
-        val resolved = URI(CHECK_URL).resolve(raw)
+        val resolved = URI(baseUrl).resolve(raw)
         val ok = (resolved.scheme.equals("https", true) || resolved.scheme.equals("http", true)) &&
             resolved.host == TRUSTED_HOST
         return if (ok) resolved.toString() else null
@@ -157,7 +162,17 @@ class UpdateChecker(private val context: Context) {
         val needed = update.sizeBytes ?: 0L
         if (dir.usableSpace < needed + 8L * 1024 * 1024) throw IOException("insufficient space")
         out.delete()
-        openStream(URL(update.apkUrl)).use { input ->
+        val primary = URL(update.apkUrl)
+        val input = try {
+            openStream(primary)
+        } catch (e: Exception) {
+            // The site may lack a valid TLS certificate; retry the same path over HTTP.
+            if (primary.protocol.equals("https", true)) {
+                Log.w(TAG, "download https failed (${e.message}); retrying over http")
+                openStream(URL("http", primary.host, primary.port.takeIf { it > 0 } ?: 80, primary.file))
+            } else throw e
+        }
+        input.use { input ->
             out.outputStream().use { output ->
                 val buf = ByteArray(64 * 1024)
                 var done = 0L
@@ -182,8 +197,11 @@ class UpdateChecker(private val context: Context) {
         val digest = MessageDigest.getInstance("SHA-256").digest(out.readBytes())
             .joinToString("") { "%02x".format(it.toInt() and 0xff) }
         val sizeOk = update.sizeBytes == null || out.length() == update.sizeBytes
-        if (digest == update.sha256 && sizeOk) out else { out.delete(); null }
-    } catch (_: Exception) {
+        val digestOk = digest == update.sha256
+        Log.i(TAG, "download: bytes=${out.length()} sizeOk=$sizeOk digestOk=$digestOk")
+        if (digestOk && sizeOk) out else { out.delete(); null }
+    } catch (e: Exception) {
+        Log.w(TAG, "download failed: ${e.message}")
         null
     }
 
@@ -192,14 +210,19 @@ class UpdateChecker(private val context: Context) {
         return try {
             val pm = context.packageManager
             val flags = PackageManager.GET_SIGNING_CERTIFICATES
-            val archive = pm.getPackageArchiveInfo(file.absolutePath, flags) ?: return false
-            if (archive.packageName != context.packageName) return false
-            if (PackageInfoCompat.getLongVersionCode(archive) != update.versionCode.toLong()) return false
+            val archive = pm.getPackageArchiveInfo(file.absolutePath, flags)
+                ?: return false.also { Log.w(TAG, "verify: unparsable apk") }
+            if (archive.packageName != context.packageName) return false.also { Log.w(TAG, "verify: package ${archive.packageName}") }
+            if (PackageInfoCompat.getLongVersionCode(archive) != update.versionCode.toLong())
+                return false.also { Log.w(TAG, "verify: version ${PackageInfoCompat.getLongVersionCode(archive)} != ${update.versionCode}") }
             val remoteSigners = archive.signingInfo?.apkContentsSigners ?: return false
             val localSigners = pm.getPackageInfo(context.packageName, flags).signingInfo?.apkContentsSigners
                 ?: return false
-            remoteSigners.any { r -> localSigners.any { l -> r.toByteArray().contentEquals(l.toByteArray()) } }
-        } catch (_: Exception) {
+            val same = remoteSigners.any { r -> localSigners.any { l -> r.toByteArray().contentEquals(l.toByteArray()) } }
+            Log.i(TAG, "verify: signerMatch=$same")
+            same
+        } catch (e: Exception) {
+            Log.w(TAG, "verify failed: ${e.message}")
             false
         }
     }
